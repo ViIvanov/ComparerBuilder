@@ -17,8 +17,8 @@ namespace ComparerBuilder
     private static readonly ConstantExpression One = Expression.Constant(1);
     private static readonly ConstantExpression MinusOne = Expression.Constant(-1);
 
-    private static readonly ParameterExpression Left = Expression.Parameter(typeof(T), null);
-    private static readonly ParameterExpression Right = Expression.Parameter(typeof(T), null);
+    private static readonly ParameterExpression First = Expression.Parameter(typeof(T), null);
+    private static readonly ParameterExpression Second = Expression.Parameter(typeof(T), null);
 
     private static readonly ParameterExpression Compare = Expression.Parameter(typeof(int));
     private static readonly IEnumerable<ParameterExpression> CompareVariables = Enumerable.Repeat(Compare, 1);
@@ -67,8 +67,7 @@ namespace ComparerBuilder
       var types = arguments != null && arguments.Any() ? Array.ConvertAll(arguments, item => item.Type) : Type.EmptyTypes;
       var method = comparer.Type.GetMethod(methodName, MethodLookup, null, types, null);
       if(method == null) {
-        const string Format = "Method \"{0}\" is not found in type \"{1}\".";
-        var message = String.Format(Format, methodName, comparer.Type);
+        var message = $"Method \"{methodName}\" is not found in type \"{comparer.Type}\".";
         throw new ArgumentException(message, nameof(methodName));
       }//if
 
@@ -109,14 +108,14 @@ namespace ComparerBuilder
       }//if
 
       var format = Expression.Constant("Failed to compare values {0} and {1} in the expression \"{2}\".");
-      var oleft = ToObject(left);
-      var oright = ToObject(right);
-      var args = Expression.NewArrayInit(typeof(object), oleft, oright, Expression.Constant(expression.ToString()));
+      var leftAsObject = ToObject(left);
+      var rightAsObject = ToObject(right);
+      var args = Expression.NewArrayInit(typeof(object), leftAsObject, rightAsObject, Expression.Constant(expression.ToString()));
       var message = Expression.Call(StringFormatMethod, format, args);
       var exceptionNew = Expression.New(InvalidOperationExceptionCtor, message);
       var addData = AddExceptionData(new Dictionary<Expression, Expression>(2) {
-        [Expression.Constant("Left")] = oleft,
-        [Expression.Constant("Right")] = oright,
+        [Expression.Constant(First.Name)] = leftAsObject,
+        [Expression.Constant(Second.Name)] = rightAsObject,
       });
       var exceptionInit = Expression.MemberInit(exceptionNew, addData);
       Expression @throw = Expression.Throw(exceptionInit);
@@ -164,7 +163,7 @@ namespace ComparerBuilder
           // value.GetHashCode();
           return call;
         } else {
-          // (value != null ? value.GetHashCode(); : 0
+          // value != null ? value.GetHashCode() : 0
           return Expression.Condition(IsNotNull(value), call, Zero);
         }//if
       }//if
@@ -252,12 +251,6 @@ namespace ComparerBuilder
       public override string ToString() => Expression.ToString();
     }
 
-    private static Tuple<Expression, Expression> MakeParameters(LambdaExpression expression) {
-      var left = ReplaceParameter(expression, Left);
-      var right = ReplaceParameter(expression, Right);
-      return Tuple.Create(left, right);
-    }
-
     #region Add Expressions
 
     protected virtual void AddExpression(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
@@ -280,6 +273,30 @@ namespace ComparerBuilder
       var constant = NullableConstant(comparer);
       return Add(expression, constant, constant);
     }
+
+    public ComparerBuilder<T> Add<TBase>(ComparerBuilder<TBase> builder) {
+      if(builder == null) {
+        throw new ArgumentNullException("builder");
+      }//if
+
+      foreach(var item in builder.Expressions) {
+        var expression = new ComparerExpression(item.Expression, item.EqualityComparer, item.Comparer);
+        Expressions.Add(expression);
+      }//for
+
+      return this;
+    }
+
+    //public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
+    //  if(builder == null) {
+    //    throw new ArgumentNullException("builder");
+    //  }//if
+
+    //  var instance = Expression.Constant(builder);
+    //  var equality = Expression.Call(instance, );
+    //  //return Add(expression, constant, constant);
+    //  return this;
+    //}
 
     public ComparerBuilder<T> AddDefault<TProperty>(Expression<Func<T, TProperty>> expression) {
       var equality = EqualityComparer<TProperty>.Default;
@@ -311,30 +328,32 @@ namespace ComparerBuilder
     private Expression<Func<T, T, bool>> BuildEquals(LambdaExpression assert = null) {
       var items =
         from item in Expressions
-        let parameters = MakeParameters(item.Expression)
-        let expr = MakeEquals(parameters.Item1, parameters.Item2, item.EqualityComparer)
-        select assert != null ? ApplyAssert(assert, expr, parameters.Item1, parameters.Item2) : expr;
-      return AggregateEquals(items);
+        let first = ReplaceParameter(item.Expression, First)
+        let second = ReplaceParameter(item.Expression, Second)
+        let expr = MakeEquals(first, second, item.EqualityComparer)
+        select assert != null ? ApplyAssert(assert, expr, first, second) : expr;
+      return AggregateEquals(items, First, Second);
     }
 
     private Expression<Func<T, int>> BuildGetHashCode() {
       var items =
         from item in Expressions
-        let parameters = MakeParameters(item.Expression)
-        select MakeGetHashCode(parameters.Item1, item.EqualityComparer);
-      return AggregateGetHashCode(items);
+        let parameter = ReplaceParameter(item.Expression, First)
+        select MakeGetHashCode(parameter, item.EqualityComparer);
+      return AggregateGetHashCode(items, First);
     }
 
     private Expression<Func<T, T, int>> BuildCompare(LambdaExpression assert = null) {
       var items =
         from item in Expressions
-        let parameters = MakeParameters(item.Expression)
-        let expr = MakeEquals(parameters.Item1, parameters.Item2, item.EqualityComparer)
-        select assert != null ? ApplyAssert(assert, expr, parameters.Item1, parameters.Item2) : expr;
-      return AggregateCompare(items);
+        let first = ReplaceParameter(item.Expression, First)
+        let second = ReplaceParameter(item.Expression, Second)
+        let expr = MakeCompare(first, second, item.Comparer)
+        select assert != null ? ApplyAssert(assert, expr, first, second) : expr;
+      return AggregateCompare(items, First, Second);
     }
 
-    private static Expression<Func<T, T, bool>> AggregateEquals(IEnumerable<Expression> items) {
+    private static Expression<Func<T, T, bool>> AggregateEquals(IEnumerable<Expression> items, ParameterExpression first, ParameterExpression second) {
       if(items == null) {
         throw new ArgumentNullException(nameof(items));
       }//if
@@ -344,14 +363,14 @@ namespace ComparerBuilder
         ? expression
         // (object)x == (object)y || ((object)x != null && (object)y != null && expression);
         : Expression.OrElse(
-            ReferenceEqual(Left, Right),
+            ReferenceEqual(first, second),
             Expression.AndAlso(
-              Expression.AndAlso(IsNotNull(Left), IsNotNull(Right)),
+              Expression.AndAlso(IsNotNull(first), IsNotNull(second)),
               expression));
-      return Expression.Lambda<Func<T, T, bool>>(body, Left, Right);
+      return Expression.Lambda<Func<T, T, bool>>(body, first, second);
     }
 
-    private static Expression<Func<T, int>> AggregateGetHashCode(IEnumerable<Expression> items) {
+    private static Expression<Func<T, int>> AggregateGetHashCode(IEnumerable<Expression> items, ParameterExpression parameter) {
       if(items == null) {
         throw new ArgumentNullException(nameof(items));
       }//if
@@ -364,36 +383,34 @@ namespace ComparerBuilder
       var body = IsValueType
         ? expression
         // ((object)x == null) ? 0 : expression;
-        : Expression.Condition(IsNull(Left), Zero, expression);
-      return Expression.Lambda<Func<T, int>>(body, Left);
+        : Expression.Condition(IsNull(parameter), Zero, expression);
+      return Expression.Lambda<Func<T, int>>(body, parameter);
     }
 
-    private static Expression<Func<T, T, int>> AggregateCompare(IEnumerable<Expression> items) {
+    private static Expression<Func<T, T, int>> AggregateCompare(IEnumerable<Expression> items, ParameterExpression first, ParameterExpression second) {
       if(items == null) {
         throw new ArgumentNullException(nameof(items));
       }//if
 
       var reverse = items.Reverse().ToList();
       Expression seed = Expression.Return(Return, reverse.First());
-      var expression = reverse.Skip(1).Aggregate(seed,
-        (acc, value) => Expression.IfThenElse(
-          Expression.NotEqual(Expression.Assign(Compare, value), Zero), ReturnCompare, acc));
+      var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => Expression.IfThenElse(Expression.NotEqual(Expression.Assign(Compare, value), Zero), ReturnCompare, acc));
       var body = IsValueType
         ? expression
-        //if((object)x == (object)y) {
-        //  return 0;
-        //} else if((object)x == null) {
-        //  return -1;
-        //} else if((object)y == null) {
-        //  return 1;
-        //} else {
-        //  return expression;
-        //}//if
-        : Expression.IfThenElse(ReferenceEqual(Left, Right), ReturnZero,
-            Expression.IfThenElse(IsNull(Left), ReturnMinusOne,
-              Expression.IfThenElse(IsNull(Right), ReturnOne, expression)));
+        // if((object)x == (object)y) {
+        //   return 0;
+        // } else if((object)x == null) {
+        //   return -1;
+        // } else if((object)y == null) {
+        //   return 1;
+        // } else {
+        //   return expression;
+        // }//if
+        : Expression.IfThenElse(ReferenceEqual(first, second), ReturnZero,
+            Expression.IfThenElse(IsNull(first), ReturnMinusOne,
+              Expression.IfThenElse(IsNull(second), ReturnOne, expression)));
       var block = Expression.Block(CompareVariables, body, LabelZero);
-      return Expression.Lambda<Func<T, T, int>>(block, Left, Right);
+      return Expression.Lambda<Func<T, T, int>>(block, first, second);
     }
 
     #endregion Building
@@ -428,11 +445,11 @@ namespace ComparerBuilder
     }
 
     public Comparer<T> BuildComparer() {
-      return BuildComparer(null);
+      return BuildComparer(assert: null);
     }
 
     public Comparer<T> BuildCheckedComparer(Expression<Func<int, bool>> assert = null) {
-      return BuildComparer(assert ?? (value => value != 0));
+      return BuildComparer(assert ?? (value => value == 0));
     }
 
     #endregion Builders
