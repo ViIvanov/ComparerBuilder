@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
 namespace ComparerBuilder
 {
-  public sealed class ComparerBuilder<T>
+  [DebuggerDisplay("Expressions: {System.Linq.Enumerable.Count(GetExpressions())}")]
+  public sealed class ComparerBuilder<T> : IComparerBuilder
   {
     #region Cached Expression and Reflection objects
 
@@ -45,16 +48,24 @@ namespace ComparerBuilder
     #endregion Cached Expression and Reflection objects
 
     public ComparerBuilder() {
+      Builders = new List<IComparerBuilder>();
       Expressions = new List<IComparerExpression>();
     }
 
-    private IList<IComparerExpression> Expressions { get; }
+    private List<IComparerBuilder> Builders { get; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
+    private List<IComparerExpression> Expressions { get; }
 
     #region Add Expressions
 
+    private void AddExpression(IComparerExpression expression) {
+      Expressions.Add(expression);
+    }
+
     private void AddExpression(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
       var expr = new SimpleComparerExpression(expression, equalityComparer, comparisonComparer);
-      Expressions.Add(expr);
+      AddExpression(expr);
     }
 
     public ComparerBuilder<T> Add(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
@@ -75,13 +86,10 @@ namespace ComparerBuilder
 
     public ComparerBuilder<T> Add<TBase>(ComparerBuilder<TBase> builder) {
       if(builder == null) {
-        throw new ArgumentNullException("builder");
+        throw new ArgumentNullException(nameof(builder));
       }//if
 
-      foreach(var item in builder.Expressions) {
-        Expressions.Add(item);
-      }//for
-
+      Builders.Add(builder);
       return this;
     }
 
@@ -282,7 +290,8 @@ namespace ComparerBuilder
         foreach(var item in items) {
           dictionary.Add(item.Key, item.Value);
         }//for
-        Items = dictionary;
+
+        Items = new ReadOnlyDictionary<Expression, Expression>(dictionary);
       }
 
       public IReadOnlyDictionary<Expression, Expression> Items { get; }
@@ -301,23 +310,34 @@ namespace ComparerBuilder
 
     #region Build Methods
 
+    private IEnumerable<IComparerExpression> GetExpressions() {
+      var builders =
+        from builder in Builders
+        from expression in builder.Expressions
+        select expression;
+      var expressions =
+        from expression in Expressions
+        select expression;
+      return builders.Concat(expressions);
+    }
+
     private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null) {
       var items =
-        from item in Expressions
+        from item in GetExpressions()
         select item.BuildEquals(first, second, assert);
       return AggregateEquals(items, first, second);
     }
 
     private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression parameter) {
       var items =
-        from item in Expressions
+        from item in GetExpressions()
         select item.BuildGetHashCode(parameter);
       return AggregateGetHashCode(items, parameter);
     }
 
     private Expression<Func<T, T, int>> BuildCompare(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null) {
       var items =
-        from item in Expressions
+        from item in GetExpressions()
         select item.BuildCompare(first, second, assert);
       return AggregateCompare(items, first, second);
     }
@@ -423,14 +443,21 @@ namespace ComparerBuilder
 
     #endregion Build Comparers
 
+    #region IComparerBuilder Members
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    IReadOnlyList<IComparerExpression> IComparerBuilder.Expressions => Expressions;
+
+    #endregion IComparerBuilder Members
+
     private sealed class SimpleComparerExpression : IComparerExpression
     {
-      public SimpleComparerExpression(LambdaExpression expresion, Expression equality = null, Expression comparison = null) {
-        if(expresion == null) {
-          throw new ArgumentNullException(nameof(expresion));
+      public SimpleComparerExpression(LambdaExpression lambda, Expression equality = null, Expression comparison = null) {
+        if(lambda == null) {
+          throw new ArgumentNullException(nameof(lambda));
         }//if
 
-        Lambda = expresion;
+        Lambda = lambda;
         EqualityComparer = equality;
         Comparer = comparison;
       }
@@ -442,8 +469,6 @@ namespace ComparerBuilder
       public override string ToString() => Lambda.ToString();
 
       #region IComparerExpression Members
-
-      LambdaExpression IComparerExpression.Expression => Lambda;
 
       public Expression BuildEquals(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null) {
         var left = ReplaceParameters(Lambda, first);
@@ -486,8 +511,6 @@ namespace ComparerBuilder
       public override string ToString() => Lambda.ToString();
 
       #region IComparerExpression Members
-
-      LambdaExpression IComparerExpression.Expression => Lambda;
 
       public Expression BuildEquals(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null) {
         var lambda = Builder.BuildEquals(ComparerBuilder<TValue>.First, ComparerBuilder<TValue>.Second, assert);

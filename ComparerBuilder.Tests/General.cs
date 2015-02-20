@@ -10,6 +10,14 @@ namespace ComparerBuilder.Tests
 
     [TestMethod]
     public void Run() {
+      //var builderSubData = new ComparerBuilder<SubData>().Add(value => value.Test);
+      //var builderBaseData1 = new ComparerBuilder<BaseData>().Add(value => value.Test1);
+      //var builderBaseData2 = new ComparerBuilder<BaseData>().Add(value => value.Test2);
+      //var builderData = new ComparerBuilder<Data>()
+      //  .Add(builderBaseData1)
+      //  .Add(builderBaseData2)
+      //  .Add(value => value.SubData1, builderSubData);
+
       var builderSubData = new ComparerBuilder<SubData>()
         .Add(value => value.Test ?? String.Empty, StringComparer.OrdinalIgnoreCase);
 

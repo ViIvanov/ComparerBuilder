@@ -6,11 +6,8 @@ namespace ComparerBuilder
   internal static class Comparers
   {
     public static EqualityComparer<T> EmptyEqualityComparer<T>() => ConstEqualityComparer<T>.Default;
-
     public static Comparer<T> EmptyComparer<T>() => ConstComparer<T>.Default;
-
     public static EqualityComparer<T> Create<T>(Func<T, T, bool> equals, Func<T, int> hashCode) => new MethodEqualityComparer<T>(equals, hashCode);
-
     public static Comparer<T> Create<T>(Func<T, T, int> compare) => new MethodComparer<T>(compare);
 
     public static int RotateRight(int value, int places) {
@@ -37,11 +34,9 @@ namespace ComparerBuilder
       }
 
       private Func<T, T, bool> EqualsMethod { get; }
-
       private Func<T, int> GetHashCodeMethod { get; }
 
       public override bool Equals(T x, T y) => EqualsMethod(x, y);
-
       public override int GetHashCode(T obj) => GetHashCodeMethod(obj);
 
       public override bool Equals(object obj) {
@@ -68,9 +63,7 @@ namespace ComparerBuilder
       private Func<T, T, int> CompareMethod { get; }
 
       public override int Compare(T x, T y) => CompareMethod(x, y);
-
       public override bool Equals(object obj) => (obj as MethodComparer<T>)?.CompareMethod == CompareMethod;
-
       public override int GetHashCode() => CompareMethod.GetHashCode();
     }
 
@@ -85,11 +78,9 @@ namespace ComparerBuilder
       public static new EqualityComparer<T> Default { get; } = new ConstEqualityComparer<T>(true, 0);
 
       private bool EqualsValue { get; }
-
       private int GetHashCodeValue { get; }
 
       public override bool Equals(T x, T y) => EqualsValue;
-
       public override int GetHashCode(T obj) => GetHashCodeValue;
 
       public override bool Equals(object obj) {
@@ -116,11 +107,8 @@ namespace ComparerBuilder
       private int CompareValue { get; }
 
       public override int Compare(T x, T y) => CompareValue;
-
       public override bool Equals(object obj) => (obj as ConstComparer<T>)?.CompareValue == CompareValue;
-
       public override int GetHashCode() => CompareValue;
-
       public override string ToString() => $"Value = {CompareValue}";
     }
   }
