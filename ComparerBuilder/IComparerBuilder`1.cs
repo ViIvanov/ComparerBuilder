@@ -1,6 +1,9 @@
-﻿namespace GBricks.Collections
+﻿using System.Collections.Generic;
+
+namespace GBricks.Collections
 {
-  public interface IComparerBuilder<in T> : IComparerBuilder
+  public interface IComparerBuilder<in T>
   {
+    IEnumerable<IComparerExpression> GetExpressions();
   }
 }

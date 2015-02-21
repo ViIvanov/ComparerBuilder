@@ -4,8 +4,8 @@ namespace GBricks.Collections
 {
   public interface IComparerExpression
   {
-    Expression BuildEquals(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null);
-    Expression BuildGetHashCode(ParameterExpression parameter);
-    Expression BuildCompare(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null);
+    Expression AsEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null);
+    Expression AsGetHashCode(ParameterExpression obj);
+    Expression AsCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null);
   }
 }
