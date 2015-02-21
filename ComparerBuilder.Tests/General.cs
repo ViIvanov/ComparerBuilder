@@ -20,13 +20,13 @@ namespace ComparerBuilder.Tests
       var builderBaseDataByTest2 = new ComparerBuilder<BaseData>()
         .Add(value => value.Test2 != null ? value.Test2.Value.Date : default(DateTime));
 
-      var builderData = new ComparerBuilder<Data>()
-        .Add(builderBaseDataByTest1)
+      var builderData = builderBaseDataByTest1
         .Add(builderBaseDataByTest2)
+        .AsDerived<Data>()
         .Add(value => value.SubData1, builderSubData);
 
-      var equalityComparer = builderData.CreateEqualityComparerChecked();
-      var comparer = builderData.CreateComparerChecked();
+      var equalityComparer = builderData.CreateEqualityComparer();
+      var comparer = builderData.CreateComparer();
 
       var data1 = new Data(2, DateTime.Now, new SubData("a"));
       var data2 = new Data(4, DateTime.Now, new SubData("A"));

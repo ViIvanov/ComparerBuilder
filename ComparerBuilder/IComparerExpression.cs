@@ -2,7 +2,7 @@ using System.Linq.Expressions;
 
 namespace GBricks.Collections
 {
-  public interface IComparerExpression
+  internal interface IComparerExpression
   {
     Expression AsEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null);
     Expression AsGetHashCode(ParameterExpression obj);

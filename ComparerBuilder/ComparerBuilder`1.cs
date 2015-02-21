@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
@@ -9,8 +10,8 @@ using System.Reflection;
 
 namespace GBricks.Collections
 {
-  [DebuggerDisplay("Expressions: {System.Linq.Enumerable.Count(GetExpressions())}")]
-  public sealed class ComparerBuilder<T> : IComparerBuilder<T>
+  [DebuggerDisplay("Expressions: {Expressions.Length}")]
+  public sealed class ComparerBuilder<T>
   {
     #region Cached Expression and Reflection objects
 
@@ -21,8 +22,9 @@ namespace GBricks.Collections
     private static readonly ConstantExpression One = Expression.Constant(1);
     private static readonly ConstantExpression MinusOne = Expression.Constant(-1);
 
-    private static readonly ParameterExpression First = Expression.Parameter(typeof(T), null);
-    private static readonly ParameterExpression Second = Expression.Parameter(typeof(T), null);
+    private static readonly ParameterExpression X = Expression.Parameter(typeof(T), "x");
+    private static readonly ParameterExpression Y = Expression.Parameter(typeof(T), "y");
+    private static readonly ParameterExpression Obj = Expression.Parameter(typeof(T), "obj");
 
     private static readonly ParameterExpression Compare = Expression.Parameter(typeof(int));
     private static readonly IEnumerable<ParameterExpression> CompareVariables = Enumerable.Repeat(Compare, 1);
@@ -47,25 +49,33 @@ namespace GBricks.Collections
 
     #endregion Cached Expression and Reflection objects
 
-    private IList<IComparerBuilder<T>> Builders { get; } = new List<IComparerBuilder<T>>();
+    public ComparerBuilder() : this(ImmutableArray<IComparerExpression>.Empty) { }
+
+    private ComparerBuilder(ImmutableArray<IComparerExpression> expressions) {
+      if(expressions.IsDefault) {
+        throw new InvalidOperationException();
+      }//if
+
+      Expressions = expressions;
+    }
 
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    private IList<IComparerExpression> Expressions { get; } = new List<IComparerExpression>();
+    private ImmutableArray<IComparerExpression> Expressions { get; }
 
     #region Add Expressions
 
-    private void AddExpression(IComparerExpression expression) {
-      Expressions.Add(expression);
-    }
+    private ComparerBuilder<T> Add(IComparerExpression expression) {
+      if(expression == null) {
+        throw new ArgumentNullException(nameof(expression));
+      }//if
 
-    private void AddExpression(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
-      var expr = new ComparerExpression(expression, equalityComparer, comparisonComparer);
-      AddExpression(expr);
+      var expressions = Expressions.Add(expression);
+      return new ComparerBuilder<T>(expressions);
     }
 
     public ComparerBuilder<T> Add(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
-      AddExpression(expression, equalityComparer, comparisonComparer);
-      return this;
+      var expr = new ComparerExpression(expression, equalityComparer, comparisonComparer);
+      return Add(expr);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, IEqualityComparer<TProperty> equalityComparer = null, IComparer<TProperty> comparisonComparer = null) {
@@ -79,19 +89,9 @@ namespace GBricks.Collections
       return Add(expression, constant, constant);
     }
 
-    public ComparerBuilder<T> Add(IComparerBuilder<T> builder) {
-      if(builder == null) {
-        throw new ArgumentNullException(nameof(builder));
-      }//if
-
-      Builders.Add(builder);
-      return this;
-    }
-
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
       var expr = new ChildComparerExpression<TProperty>(expression, builder);
-      Expressions.Add(expr);
-      return this;
+      return Add(expr);
     }
 
     public ComparerBuilder<T> AddDefault(LambdaExpression expression) {
@@ -115,6 +115,19 @@ namespace GBricks.Collections
       var equality = EqualityComparer<TProperty>.Default;
       var comparison = Comparer<TProperty>.Default;
       return Add(expression, equality, comparison);
+    }
+
+    public ComparerBuilder<T> Add(ComparerBuilder<T> other) {
+      if(other == null) {
+        throw new ArgumentNullException(nameof(other));
+      }//if
+
+      var expressions = Expressions.AddRange(other.Expressions);
+      return new ComparerBuilder<T>(expressions);
+    }
+
+    public ComparerBuilder<TDerived> AsDerived<TDerived>() where TDerived : T {
+      return new ComparerBuilder<TDerived>(Expressions);
     }
 
     #endregion Add Expressions
@@ -143,61 +156,61 @@ namespace GBricks.Collections
 
     #region Comparison Helpers
 
-    private static Expression MakeEquals(Expression left, Expression right, Expression comparer) {
-      if(left == null) {
-        throw new ArgumentNullException(nameof(left));
-      } else if(right == null) {
-        throw new ArgumentNullException(nameof(right));
+    private static Expression MakeEquals(Expression x, Expression y, Expression comparer) {
+      if(x == null) {
+        throw new ArgumentNullException(nameof(x));
+      } else if(y == null) {
+        throw new ArgumentNullException(nameof(y));
       }//if
 
       if(comparer != null) {
-        // comparer.Equals(left, right);
-        return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.Equals), left, right);
+        // comparer.Equals(x, y);
+        return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.Equals), x, y);
       } else {
-        if(left.Type.IsValueType && right.Type.IsValueType) {
-          // left == right;
-          return Expression.Equal(left, right);
+        if(x.Type.IsValueType && y.Type.IsValueType) {
+          // x == y;
+          return Expression.Equal(x, y);
         } else {
-          // Object.Equals(left, right);
-          return Expression.Call(ObjectEqualsDelegate.Method, ToObject(left), ToObject(right));
+          // Object.Equals(x, y);
+          return Expression.Call(ObjectEqualsDelegate.Method, ToObject(x), ToObject(y));
         }//if
       }//if
     }
 
-    private static Expression MakeGetHashCode(Expression value, Expression comparer) {
-      if(value == null) {
-        throw new ArgumentNullException(nameof(value));
+    private static Expression MakeGetHashCode(Expression obj, Expression comparer) {
+      if(obj == null) {
+        throw new ArgumentNullException(nameof(obj));
       }//if
 
       if(comparer != null) {
-        // comparer.GetHashCode(value);
-        return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.GetHashCode), value);
+        // comparer.GetHashCode(obj);
+        return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.GetHashCode), obj);
       } else {
-        var call = Expression.Call(value, GetHashCodeDelegate.Method);
-        if(value.Type.IsValueType) {
-          // value.GetHashCode();
+        var call = Expression.Call(obj, GetHashCodeDelegate.Method);
+        if(obj.Type.IsValueType) {
+          // obj.GetHashCode();
           return call;
         } else {
-          // value != null ? value.GetHashCode() : 0
-          return Expression.Condition(IsNotNull(value), call, Zero);
+          // obj != null ? obj.GetHashCode() : 0
+          return Expression.Condition(IsNotNull(obj), call, Zero);
         }//if
       }//if
     }
 
-    private static Expression MakeCompare(Expression left, Expression right, Expression comparer) {
-      if(left == null) {
-        throw new ArgumentNullException(nameof(left));
-      } else if(right == null) {
-        throw new ArgumentNullException(nameof(right));
+    private static Expression MakeCompare(Expression x, Expression y, Expression comparer) {
+      if(x == null) {
+        throw new ArgumentNullException(nameof(x));
+      } else if(y == null) {
+        throw new ArgumentNullException(nameof(y));
       }//if
 
       if(comparer != null) {
-        // comparer.Compare(left, right);
-        return CallComparerMethod(comparer, nameof(IComparer<T>.Compare), left, right);
+        // comparer.Compare(x, y);
+        return CallComparerMethod(comparer, nameof(IComparer<T>.Compare), x, y);
       } else {
-        // (left < right) ? -1 : (left > right ? 1 : 0);
-        return Expression.Condition(Expression.LessThan(left, right), MinusOne,
-          Expression.Condition(Expression.GreaterThan(left, right), One, Zero));
+        // (x < y) ? -1 : (y < x ? 1 : 0);
+        return Expression.Condition(Expression.LessThan(x, y), MinusOne,
+          Expression.Condition(Expression.LessThan(y, x), One, Zero));
       }//if
     }
 
@@ -217,7 +230,7 @@ namespace GBricks.Collections
       return Expression.Call(comparer, method, arguments);
     }
 
-    private static Expression ApplyAssert(LambdaExpression assert, Expression expression, Expression left, Expression right) {
+    private static Expression ApplyAssert(LambdaExpression assert, Expression expression, Expression x, Expression y) {
       if(assert == null) {
         throw new ArgumentNullException(nameof(assert));
       } else if(expression == null) {
@@ -225,14 +238,14 @@ namespace GBricks.Collections
       }//if
 
       var format = Expression.Constant("Failed to compare values \"{0}\" and \"{1}\" in the expression \"{2}\".");
-      var leftAsObject = ToObject(left);
-      var rightAsObject = ToObject(right);
-      var args = Expression.NewArrayInit(typeof(object), leftAsObject, rightAsObject, Expression.Constant(expression.ToString()));
+      var xAsObject = ToObject(x);
+      var yAsObject = ToObject(y);
+      var args = Expression.NewArrayInit(typeof(object), xAsObject, yAsObject, Expression.Constant(expression.ToString()));
       var message = Expression.Call(StringFormatMethod, format, args);
       var exceptionNew = Expression.New(InvalidOperationExceptionCtor, message);
       var addData = AddExceptionData(new Dictionary<Expression, Expression>(2) {
-        [Expression.Constant("Left")] = leftAsObject,
-        [Expression.Constant("Right")] = rightAsObject,
+        [Expression.Constant(nameof(x))] = xAsObject,
+        [Expression.Constant(nameof(y))] = yAsObject,
       });
       var exceptionInit = Expression.MemberInit(exceptionNew, addData);
       Expression @throw = Expression.Throw(exceptionInit);
@@ -309,39 +322,28 @@ namespace GBricks.Collections
 
     #region Build Methods
 
-    private IEnumerable<IComparerExpression> GetExpressions() {
-      var builders =
-        from builder in Builders
-        from expression in builder.GetExpressions()
-        select expression;
-      var expressions =
-        from expression in Expressions
-        select expression;
-      return builders.Concat(expressions);
-    }
-
-    private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null) {
+    private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
       var items =
-        from item in GetExpressions()
-        select item.AsEquals(first, second, assert);
-      return AggregateEquals(items, first, second);
+        from item in Expressions
+        select item.AsEquals(x, y, assert);
+      return AggregateEquals(items, x, y);
     }
 
-    private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression parameter) {
+    private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj) {
       var items =
-        from item in GetExpressions()
-        select item.AsGetHashCode(parameter);
-      return AggregateGetHashCode(items, parameter);
+        from item in Expressions
+        select item.AsGetHashCode(obj);
+      return AggregateGetHashCode(items, obj);
     }
 
-    private Expression<Func<T, T, int>> BuildCompare(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null) {
+    private Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
       var items =
-        from item in GetExpressions()
-        select item.AsCompare(first, second, assert);
-      return AggregateCompare(items, first, second);
+        from item in Expressions
+        select item.AsCompare(x, y, assert);
+      return AggregateCompare(items, x, y);
     }
 
-    private static Expression<Func<T, T, bool>> AggregateEquals(IEnumerable<Expression> items, ParameterExpression first, ParameterExpression second) {
+    private static Expression<Func<T, T, bool>> AggregateEquals(IEnumerable<Expression> items, ParameterExpression x, ParameterExpression y) {
       if(items == null) {
         throw new ArgumentNullException(nameof(items));
       }//if
@@ -351,14 +353,14 @@ namespace GBricks.Collections
         ? expression
         // (object)x == (object)y || ((object)x != null && (object)y != null && expression);
         : Expression.OrElse(
-            ReferenceEqual(first, second),
+            ReferenceEqual(x, y),
             Expression.AndAlso(
-              Expression.AndAlso(IsNotNull(first), IsNotNull(second)),
+              Expression.AndAlso(IsNotNull(x), IsNotNull(y)),
               expression));
-      return Expression.Lambda<Func<T, T, bool>>(body, first, second);
+      return Expression.Lambda<Func<T, T, bool>>(body, x, y);
     }
 
-    private static Expression<Func<T, int>> AggregateGetHashCode(IEnumerable<Expression> items, ParameterExpression parameter) {
+    private static Expression<Func<T, int>> AggregateGetHashCode(IEnumerable<Expression> items, ParameterExpression obj) {
       if(items == null) {
         throw new ArgumentNullException(nameof(items));
       }//if
@@ -370,12 +372,12 @@ namespace GBricks.Collections
             Expression.Call(RotateRightDelegate.Method, item.Item1, Expression.Constant(item.Item2))));
       var body = IsValueType
         ? expression
-        // ((object)x == null) ? 0 : expression;
-        : Expression.Condition(IsNull(parameter), Zero, expression);
-      return Expression.Lambda<Func<T, int>>(body, parameter);
+        // ((object)obj == null) ? 0 : expression;
+        : Expression.Condition(IsNull(obj), Zero, expression);
+      return Expression.Lambda<Func<T, int>>(body, obj);
     }
 
-    private static Expression<Func<T, T, int>> AggregateCompare(IEnumerable<Expression> items, ParameterExpression first, ParameterExpression second) {
+    private static Expression<Func<T, T, int>> AggregateCompare(IEnumerable<Expression> items, ParameterExpression x, ParameterExpression y) {
       if(items == null) {
         throw new ArgumentNullException(nameof(items));
       }//if
@@ -394,11 +396,11 @@ namespace GBricks.Collections
         // } else {
         //   return expression;
         // }//if
-        : Expression.IfThenElse(ReferenceEqual(first, second), ReturnZero,
-            Expression.IfThenElse(IsNull(first), ReturnMinusOne,
-              Expression.IfThenElse(IsNull(second), ReturnOne, expression)));
+        : Expression.IfThenElse(ReferenceEqual(x, y), ReturnZero,
+            Expression.IfThenElse(IsNull(x), ReturnMinusOne,
+              Expression.IfThenElse(IsNull(y), ReturnOne, expression)));
       var block = Expression.Block(CompareVariables, body, LabelZero);
-      return Expression.Lambda<Func<T, T, int>>(block, first, second);
+      return Expression.Lambda<Func<T, T, int>>(block, x, y);
     }
 
     #endregion Build Methods
@@ -410,8 +412,8 @@ namespace GBricks.Collections
         return Comparers.EmptyEqualityComparer<T>();
       }//if
 
-      var equals = BuildEquals(First, Second, assert);
-      var hashCode = BuildGetHashCode(First);
+      var equals = BuildEquals(X, Y, assert);
+      var hashCode = BuildGetHashCode(Obj);
       return Comparers.Create(equals.Compile(), hashCode.Compile());
     }
 
@@ -428,7 +430,7 @@ namespace GBricks.Collections
         return Comparers.EmptyComparer<T>();
       }//if
 
-      var compare = BuildCompare(First, Second, assert);
+      var compare = BuildCompare(X, Y, assert);
       return Comparers.Create(compare.Compile());
     }
 
@@ -446,39 +448,39 @@ namespace GBricks.Collections
 
     private sealed class ComparerExpression : IComparerExpression
     {
-      public ComparerExpression(LambdaExpression lambda, Expression equality = null, Expression comparison = null) {
-        if(lambda == null) {
-          throw new ArgumentNullException(nameof(lambda));
+      public ComparerExpression(LambdaExpression expression, Expression equality = null, Expression comparison = null) {
+        if(expression == null) {
+          throw new ArgumentNullException(nameof(expression));
         }//if
 
-        Lambda = lambda;
+        Expression = expression;
         EqualityComparer = equality;
         Comparer = comparison;
       }
 
-      public LambdaExpression Lambda { get; }
+      public LambdaExpression Expression { get; }
       public Expression EqualityComparer { get; }
       public Expression Comparer { get; }
 
-      public override string ToString() => Lambda.ToString();
+      public override string ToString() => Expression.ToString();
 
       #region IComparerExpression Members
 
       public Expression AsEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-        var first = ReplaceParameters(Lambda, x);
-        var second = ReplaceParameters(Lambda, y);
+        var first = ReplaceParameters(Expression, x);
+        var second = ReplaceParameters(Expression, y);
         var expression = MakeEquals(first, second, EqualityComparer);
         return assert != null ? ApplyAssert(assert, expression, first, second) : expression;
       }
 
       public Expression AsGetHashCode(ParameterExpression obj) {
-        var value = ReplaceParameters(Lambda, obj);
+        var value = ReplaceParameters(Expression, obj);
         return MakeGetHashCode(value, EqualityComparer);
       }
 
       public Expression AsCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-        var first = ReplaceParameters(Lambda, x);
-        var second = ReplaceParameters(Lambda, y);
+        var first = ReplaceParameters(Expression, x);
+        var second = ReplaceParameters(Expression, y);
         var expression = MakeCompare(first, second, Comparer);
         return assert != null ? ApplyAssert(assert, expression, first, second) : expression;
       }
@@ -488,41 +490,41 @@ namespace GBricks.Collections
 
     private sealed class ChildComparerExpression<TProperty> : IComparerExpression
     {
-      public ChildComparerExpression(LambdaExpression lambda, ComparerBuilder<TProperty> builder) {
-        if(lambda == null) {
-          throw new ArgumentNullException(nameof(lambda));
+      public ChildComparerExpression(LambdaExpression expression, ComparerBuilder<TProperty> builder) {
+        if(expression == null) {
+          throw new ArgumentNullException(nameof(expression));
         } else if(builder == null) {
           throw new ArgumentNullException(nameof(builder));
         }//if
 
-        Lambda = lambda;
+        Expression = expression;
         Builder = builder;
       }
 
-      public LambdaExpression Lambda { get; }
+      public LambdaExpression Expression { get; }
       public ComparerBuilder<TProperty> Builder { get; }
 
-      public override string ToString() => Lambda.ToString();
+      public override string ToString() => Expression.ToString();
 
       #region IComparerExpression Members
 
       public Expression AsEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-        var lambda = Builder.BuildEquals(ComparerBuilder<TProperty>.First, ComparerBuilder<TProperty>.Second, assert);
-        var first = ReplaceParameters(Lambda, x);
-        var second = ReplaceParameters(Lambda, y);
+        var lambda = Builder.BuildEquals(ComparerBuilder<TProperty>.X, ComparerBuilder<TProperty>.Y, assert);
+        var first = ReplaceParameters(Expression, x);
+        var second = ReplaceParameters(Expression, y);
         return ReplaceParameters(lambda, first, second);
       }
 
       public Expression AsGetHashCode(ParameterExpression obj) {
-        var lambda = Builder.BuildGetHashCode(ComparerBuilder<TProperty>.First);
-        var value = ReplaceParameters(Lambda, obj);
+        var lambda = Builder.BuildGetHashCode(ComparerBuilder<TProperty>.Obj);
+        var value = ReplaceParameters(Expression, obj);
         return ReplaceParameters(lambda, value);
       }
 
       public Expression AsCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-        var lambda = Builder.BuildCompare(ComparerBuilder<TProperty>.First, ComparerBuilder<TProperty>.Second, assert);
-        var first = ReplaceParameters(Lambda, x);
-        var second = ReplaceParameters(Lambda, y);
+        var lambda = Builder.BuildCompare(ComparerBuilder<TProperty>.X, ComparerBuilder<TProperty>.Y, assert);
+        var first = ReplaceParameters(Expression, x);
+        var second = ReplaceParameters(Expression, y);
         return ReplaceParameters(lambda, first, second);
       }
 
@@ -530,11 +532,5 @@ namespace GBricks.Collections
     }
 
     #endregion Comparer Expressions
-
-    #region IComparerBuilder<T> Members
-
-    IEnumerable<IComparerExpression> IComparerBuilder<T>.GetExpressions() => GetExpressions();
-
-    #endregion IComparerBuilder<T> Members
   }
 }
