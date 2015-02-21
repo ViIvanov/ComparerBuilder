@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-namespace ComparerBuilder
+namespace GBricks.Collections
 {
   public interface IComparerExpression
   {

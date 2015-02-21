@@ -7,7 +7,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace ComparerBuilder
+namespace GBricks.Collections
 {
   [DebuggerDisplay("Expressions: {System.Linq.Enumerable.Count(GetExpressions())}")]
   public sealed class ComparerBuilder<T> : IComparerBuilder<T>

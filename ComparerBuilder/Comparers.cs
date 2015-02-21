@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace ComparerBuilder
+namespace GBricks.Collections
 {
   internal static class Comparers
   {

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ComparerBuilder
+namespace GBricks.Collections
 {
   public interface IComparerBuilder
   {
