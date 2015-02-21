@@ -2,7 +2,7 @@ using System.Linq.Expressions;
 
 namespace ComparerBuilder
 {
-  internal interface IComparerExpression
+  public interface IComparerExpression
   {
     Expression BuildEquals(ParameterExpression first, ParameterExpression second, LambdaExpression assert = null);
     Expression BuildGetHashCode(ParameterExpression parameter);

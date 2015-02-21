@@ -10,7 +10,7 @@ using System.Reflection;
 namespace ComparerBuilder
 {
   [DebuggerDisplay("Expressions: {System.Linq.Enumerable.Count(GetExpressions())}")]
-  public sealed class ComparerBuilder<T> : IComparerBuilder
+  public sealed class ComparerBuilder<T> : IComparerBuilder<T>
   {
     #region Cached Expression and Reflection objects
 
@@ -48,14 +48,12 @@ namespace ComparerBuilder
     #endregion Cached Expression and Reflection objects
 
     public ComparerBuilder() {
-      Builders = new List<IComparerBuilder>();
-      Expressions = new List<IComparerExpression>();
     }
 
-    private List<IComparerBuilder> Builders { get; }
+    private List<IComparerBuilder> Builders { get; } = new List<IComparerBuilder>();
 
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    private List<IComparerExpression> Expressions { get; }
+    private List<IComparerExpression> Expressions { get; } = new List<IComparerExpression>();
 
     #region Add Expressions
 
@@ -84,7 +82,7 @@ namespace ComparerBuilder
       return Add(expression, constant, constant);
     }
 
-    public ComparerBuilder<T> Add<TBase>(ComparerBuilder<TBase> builder) {
+    public ComparerBuilder<T> Add(IComparerBuilder<T> builder) {
       if(builder == null) {
         throw new ArgumentNullException(nameof(builder));
       }//if
@@ -406,7 +404,7 @@ namespace ComparerBuilder
 
     #region Build Comparers
 
-    private EqualityComparer<T> BuildEqualityComparer(Expression<Func<bool, bool>> assert) {
+    private EqualityComparer<T> CreateEqualityComparer(Expression<Func<bool, bool>> assert) {
       if(!Expressions.Any()) {
         return Comparers.EmptyEqualityComparer<T>();
       }//if
@@ -416,15 +414,15 @@ namespace ComparerBuilder
       return Comparers.Create(equals.Compile(), hashCode.Compile());
     }
 
-    public EqualityComparer<T> BuildEqualityComparer() {
-      return BuildEqualityComparer(assert: null);
+    public EqualityComparer<T> CreateEqualityComparer() {
+      return CreateEqualityComparer(assert: null);
     }
 
-    public EqualityComparer<T> BuildEqualityComparerChecked(Expression<Func<bool, bool>> assert = null) {
-      return BuildEqualityComparer(assert ?? (value => value));
+    public EqualityComparer<T> CreateEqualityComparerChecked(Expression<Func<bool, bool>> assert = null) {
+      return CreateEqualityComparer(assert ?? (value => value));
     }
 
-    private Comparer<T> BuildComparer(Expression<Func<int, bool>> assert) {
+    private Comparer<T> CreateComparer(Expression<Func<int, bool>> assert) {
       if(!Expressions.Any()) {
         return Comparers.EmptyComparer<T>();
       }//if
@@ -433,12 +431,12 @@ namespace ComparerBuilder
       return Comparers.Create(compare.Compile());
     }
 
-    public Comparer<T> BuildComparer() {
-      return BuildComparer(assert: null);
+    public Comparer<T> CreateComparer() {
+      return CreateComparer(assert: null);
     }
 
-    public Comparer<T> BuildComparerChecked(Expression<Func<int, bool>> assert = null) {
-      return BuildComparer(assert ?? (value => value == 0));
+    public Comparer<T> CreateComparerChecked(Expression<Func<int, bool>> assert = null) {
+      return CreateComparer(assert ?? (value => value == 0));
     }
 
     #endregion Build Comparers
