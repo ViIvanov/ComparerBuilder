@@ -1,7 +1,11 @@
-### ComparerBuilder
+#### `ComparerBuilder<T>`
 Class for building equality comparers and sort comparers.
 
 `ComparerBuilder<>` helps to compare a complex types. It can create an `EqualityComparer<>` and/or a `Comparer<>` objects for you types. You just need to "add" expressions, that describes what data do you want to compare and, optionally, comparers - how to compare that data.
+
+Also, you can find reasons for making `ComparerBuilder<>` in this old post on [RSDN](http://rsdn.ru/forum/src/3914421.1) (in Russian).
+
+Now `ComparerBuilder<>` rewrited on C# 6.0. You can compose a comparer builder with other comparer builders. Also, it supports "checked" comparers, that throws an exception when `IEqualityComparer<>::Equals` returns `false` or `IComparer<>::Comparer` returns not 0. "Checked" comparers are helpful in a debugging scenarios.
 
 ```cs
 static class Example
