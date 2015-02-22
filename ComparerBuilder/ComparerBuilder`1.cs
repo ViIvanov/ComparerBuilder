@@ -48,13 +48,9 @@ namespace GBricks.Collections
 
     #endregion Cached Expression and Reflection objects
 
-    public ComparerBuilder() : this(ImmutableArray<IComparerExpression>.Empty) { }
+    public ComparerBuilder() { }
 
     private ComparerBuilder(ImmutableArray<IComparerExpression> expressions) {
-      if(expressions.IsDefault) {
-        throw new InvalidOperationException();
-      }//if
-
       Expressions = expressions;
     }
 
@@ -67,7 +63,7 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(expression));
       }//if
 
-      var expressions = Expressions.Add(expression);
+      var expressions = Expressions.IsDefaultOrEmpty ? ImmutableArray.Create(expression) : Expressions.Add(expression);
       return new ComparerBuilder<T>(expressions);
     }
 
@@ -120,8 +116,8 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(other));
       }//if
 
-      if(Expressions.IsEmpty) {
-        return other.Expressions.IsEmpty ? this : other;
+      if(Expressions.IsDefaultOrEmpty || other.Expressions.IsDefaultOrEmpty) {
+        return other.Expressions.IsDefaultOrEmpty ? this : other;
       } else {
         var expressions = Expressions.AddRange(other.Expressions);
         return new ComparerBuilder<T>(expressions);
@@ -334,32 +330,7 @@ namespace GBricks.Collections
     #region Build Methods
 
     private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-      var items =
-        from item in Expressions
-        select item.AsEquals(x, y, assert);
-      return AggregateEquals(items, x, y);
-    }
-
-    private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj) {
-      var items =
-        from item in Expressions
-        select item.AsGetHashCode(obj);
-      return AggregateGetHashCode(items, obj);
-    }
-
-    private Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-      var items =
-        from item in Expressions
-        select item.AsCompare(x, y, assert);
-      return AggregateCompare(items, x, y);
-    }
-
-    private static Expression<Func<T, T, bool>> AggregateEquals(IEnumerable<Expression> items, ParameterExpression x, ParameterExpression y) {
-      if(items == null) {
-        throw new ArgumentNullException(nameof(items));
-      }//if
-
-      var expression = items.Aggregate((left, right) => Expression.AndAlso(left, right));
+      var expression = Expressions.Select(item => item.AsEquals(x, y, assert)).Aggregate((left, right) => Expression.AndAlso(left, right));
       var body = IsValueType
         ? expression
         // (object)x == (object)y || ((object)x != null && (object)y != null && expression);
@@ -371,12 +342,8 @@ namespace GBricks.Collections
       return Expression.Lambda<Func<T, T, bool>>(body, x, y);
     }
 
-    private static Expression<Func<T, int>> AggregateGetHashCode(IEnumerable<Expression> items, ParameterExpression obj) {
-      if(items == null) {
-        throw new ArgumentNullException(nameof(items));
-      }//if
-
-      var list = items as IReadOnlyCollection<Expression> ?? items.ToList();
+    private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj) {
+      var list = Expressions.Select(item => item.AsGetHashCode(obj)).ToList();
       var expression = list.Skip(1).Select((item, index) => Tuple.Create(item, index + 1))
         .Aggregate(list.First(), (acc, item) =>
           Expression.ExclusiveOr(acc,
@@ -388,12 +355,8 @@ namespace GBricks.Collections
       return Expression.Lambda<Func<T, int>>(body, obj);
     }
 
-    private static Expression<Func<T, T, int>> AggregateCompare(IEnumerable<Expression> items, ParameterExpression x, ParameterExpression y) {
-      if(items == null) {
-        throw new ArgumentNullException(nameof(items));
-      }//if
-
-      var reverse = items.Reverse().ToList();
+    private Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
+      var reverse = Expressions.Select(item => item.AsCompare(x, y, assert)).Reverse().ToList();
       Expression seed = Expression.Return(Return, reverse.First());
       var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => Expression.IfThenElse(Expression.NotEqual(Expression.Assign(Compare, value), Zero), ReturnCompare, acc));
       var body = IsValueType
@@ -419,7 +382,7 @@ namespace GBricks.Collections
     #region Build Comparers
 
     private EqualityComparer<T> CreateEqualityComparer(Expression<Func<bool, bool>> assert) {
-      if(!Expressions.Any()) {
+      if(Expressions.IsDefaultOrEmpty) {
         return Comparers.EmptyEqualityComparer<T>();
       }//if
 
@@ -437,7 +400,7 @@ namespace GBricks.Collections
     }
 
     private Comparer<T> CreateComparer(Expression<Func<int, bool>> assert) {
-      if(!Expressions.Any()) {
+      if(Expressions.IsDefaultOrEmpty) {
         return Comparers.EmptyComparer<T>();
       }//if
 
