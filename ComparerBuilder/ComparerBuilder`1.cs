@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
@@ -27,7 +26,7 @@ namespace GBricks.Collections
     private static readonly ParameterExpression Obj = Expression.Parameter(typeof(T), "obj");
 
     private static readonly ParameterExpression Compare = Expression.Parameter(typeof(int));
-    private static readonly IEnumerable<ParameterExpression> CompareVariables = Enumerable.Repeat(Compare, 1);
+    private static readonly IEnumerable<ParameterExpression> CompareVariables = new[] { Compare, };
     private static readonly LabelTarget Return = Expression.Label(typeof(int));
     private static readonly LabelExpression LabelZero = Expression.Label(Return, Zero);
     private static readonly GotoExpression ReturnZero = Expression.Return(Return, Zero);
@@ -72,7 +71,7 @@ namespace GBricks.Collections
       return new ComparerBuilder<T>(expressions);
     }
 
-    public ComparerBuilder<T> Add(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
+    private ComparerBuilder<T> Add(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
       var expr = new ComparerExpression(expression, equalityComparer, comparisonComparer);
       return Add(expr);
     }
@@ -93,7 +92,7 @@ namespace GBricks.Collections
       return Add(expr);
     }
 
-    public ComparerBuilder<T> AddDefault(LambdaExpression expression) {
+    private ComparerBuilder<T> AddDefault(LambdaExpression expression) {
       if(expression == null) {
         throw new ArgumentNullException(nameof(expression));
       }//if
@@ -121,8 +120,12 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(other));
       }//if
 
-      var expressions = Expressions.AddRange(other.Expressions);
-      return new ComparerBuilder<T>(expressions);
+      if(Expressions.IsEmpty) {
+        return other.Expressions.IsEmpty ? this : other;
+      } else {
+        var expressions = Expressions.AddRange(other.Expressions);
+        return new ComparerBuilder<T>(expressions);
+      }//if
     }
 
     public ComparerBuilder<TDerived> AsDerived<TDerived>() where TDerived : T {
