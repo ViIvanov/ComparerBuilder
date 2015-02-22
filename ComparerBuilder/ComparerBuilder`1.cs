@@ -9,30 +9,32 @@ using System.Reflection;
 
 namespace GBricks.Collections
 {
+  using static Expression;
+
   [DebuggerDisplay("Expressions: {Expressions.Length}")]
   public sealed class ComparerBuilder<T>
   {
     #region Cached Expression and Reflection objects
 
-    private static readonly ConstantExpression Null = Expression.Constant(null);
-    private static readonly ConstantExpression Zero = Expression.Constant(0);
-    private static readonly ConstantExpression False = Expression.Constant(false);
+    private static readonly ConstantExpression Null = Constant(null);
+    private static readonly ConstantExpression Zero = Constant(0);
+    private static readonly ConstantExpression False = Constant(false);
 
-    private static readonly ConstantExpression One = Expression.Constant(1);
-    private static readonly ConstantExpression MinusOne = Expression.Constant(-1);
+    private static readonly ConstantExpression One = Constant(1);
+    private static readonly ConstantExpression MinusOne = Constant(-1);
 
-    private static readonly ParameterExpression X = Expression.Parameter(typeof(T), "x");
-    private static readonly ParameterExpression Y = Expression.Parameter(typeof(T), "y");
-    private static readonly ParameterExpression Obj = Expression.Parameter(typeof(T), "obj");
+    private static readonly ParameterExpression X = Parameter(typeof(T), "x");
+    private static readonly ParameterExpression Y = Parameter(typeof(T), "y");
+    private static readonly ParameterExpression Obj = Parameter(typeof(T), "obj");
 
-    private static readonly ParameterExpression Compare = Expression.Parameter(typeof(int));
+    private static readonly ParameterExpression Compare = Parameter(typeof(int));
     private static readonly IEnumerable<ParameterExpression> CompareVariables = new[] { Compare, };
-    private static readonly LabelTarget Return = Expression.Label(typeof(int));
-    private static readonly LabelExpression LabelZero = Expression.Label(Return, Zero);
-    private static readonly GotoExpression ReturnZero = Expression.Return(Return, Zero);
-    private static readonly GotoExpression ReturnOne = Expression.Return(Return, One);
-    private static readonly GotoExpression ReturnMinusOne = Expression.Return(Return, MinusOne);
-    private static readonly GotoExpression ReturnCompare = Expression.Return(Return, Compare);
+    private static readonly LabelTarget Return = Label(typeof(int));
+    private static readonly LabelExpression LabelZero = Label(Return, Zero);
+    private static readonly GotoExpression ReturnZero = Return(Return, Zero);
+    private static readonly GotoExpression ReturnOne = Return(Return, One);
+    private static readonly GotoExpression ReturnMinusOne = Return(Return, MinusOne);
+    private static readonly GotoExpression ReturnCompare = Return(Return, Compare);
 
     private static readonly Func<object, object, bool> ObjectEqualsDelegate = Equals;
     private static readonly Func<int> GetHashCodeDelegate = new object().GetHashCode;
@@ -97,7 +99,7 @@ namespace GBricks.Collections
         var type = defitition.MakeGenericType(expression.ReturnType);
         var property = type.GetProperty(propertyName);
         var instance = property.GetValue(null, null);
-        return Expression.Constant(instance);
+        return Constant(instance);
       };
 
       var equality = create(typeof(EqualityComparer<>), nameof(EqualityComparer<T>.Default));
@@ -132,10 +134,9 @@ namespace GBricks.Collections
 
     #region Expression Helpers
 
-    private static BinaryExpression ReferenceEqual(Expression left, Expression right) => Expression.ReferenceEqual(left, right);
-    private static BinaryExpression IsNull(Expression value) => Expression.ReferenceEqual(value, Null);
-    private static BinaryExpression IsNotNull(Expression value) => Expression.ReferenceNotEqual(value, Null);
-    private static ConstantExpression NullableConstant(object value) => value != null ? Expression.Constant(value) : null;
+    private static BinaryExpression IsNull(Expression value) => ReferenceEqual(value, Null);
+    private static BinaryExpression IsNotNull(Expression value) => ReferenceNotEqual(value, Null);
+    private static ConstantExpression NullableConstant(object value) => value != null ? Constant(value) : null;
 
     private static Expression ToObject(Expression expression) {
       if(expression == null) {
@@ -146,7 +147,7 @@ namespace GBricks.Collections
       if(type.IsClass || type.IsInterface) {
         return expression;
       } else {
-        return Expression.Convert(expression, typeof(object));
+        return Convert(expression, typeof(object));
       }//if
     }
 
@@ -167,10 +168,10 @@ namespace GBricks.Collections
       } else {
         if(x.Type.IsValueType && y.Type.IsValueType) {
           // x == y;
-          return Expression.Equal(x, y);
+          return Equal(x, y);
         } else {
           // Object.Equals(x, y);
-          return Expression.Call(ObjectEqualsDelegate.Method, ToObject(x), ToObject(y));
+          return Call(ObjectEqualsDelegate.Method, ToObject(x), ToObject(y));
         }//if
       }//if
     }
@@ -184,13 +185,13 @@ namespace GBricks.Collections
         // comparer.GetHashCode(obj);
         return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.GetHashCode), obj);
       } else {
-        var call = Expression.Call(obj, GetHashCodeDelegate.Method);
+        var call = Call(obj, GetHashCodeDelegate.Method);
         if(obj.Type.IsValueType) {
           // obj.GetHashCode();
           return call;
         } else {
           // obj != null ? obj.GetHashCode() : 0
-          return Expression.Condition(IsNotNull(obj), call, Zero);
+          return Condition(IsNotNull(obj), call, Zero);
         }//if
       }//if
     }
@@ -207,8 +208,7 @@ namespace GBricks.Collections
         return CallComparerMethod(comparer, nameof(IComparer<T>.Compare), x, y);
       } else {
         // (x < y) ? -1 : (y < x ? 1 : 0);
-        return Expression.Condition(Expression.LessThan(x, y), MinusOne,
-          Expression.Condition(Expression.LessThan(y, x), One, Zero));
+        return Condition(LessThan(x, y), MinusOne, Condition(LessThan(y, x), One, Zero));
       }//if
     }
 
@@ -225,7 +225,7 @@ namespace GBricks.Collections
         throw new ArgumentException(message, nameof(methodName));
       }//if
 
-      return Expression.Call(comparer, method, arguments);
+      return Call(comparer, method, arguments);
     }
 
     private static Expression ApplyAssert(LambdaExpression assert, Expression expression, Expression x, Expression y) {
@@ -235,25 +235,25 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(expression));
       }//if
 
-      var format = Expression.Constant("Failed to compare values \"{0}\" and \"{1}\" in the expression \"{2}\".");
+      var format = Constant("Failed to compare values \"{0}\" and \"{1}\" in the expression \"{2}\".");
       var xAsObject = ToObject(x);
       var yAsObject = ToObject(y);
-      var args = Expression.NewArrayInit(typeof(object), xAsObject, yAsObject, Expression.Constant(expression.ToString()));
-      var message = Expression.Call(StringFormatMethod, format, args);
-      var exceptionNew = Expression.New(InvalidOperationExceptionCtor, message);
+      var args = NewArrayInit(typeof(object), xAsObject, yAsObject, Constant(expression.ToString()));
+      var message = Call(StringFormatMethod, format, args);
+      var exceptionNew = New(InvalidOperationExceptionCtor, message);
       var addData = AddExceptionData(new Dictionary<Expression, Expression>(2) {
-        [Expression.Constant(nameof(x))] = xAsObject,
-        [Expression.Constant(nameof(y))] = yAsObject,
+        [Constant(nameof(x))] = xAsObject,
+        [Constant(nameof(y))] = yAsObject,
       });
-      var exceptionInit = Expression.MemberInit(exceptionNew, addData);
-      Expression @throw = Expression.Throw(exceptionInit);
+      var exceptionInit = MemberInit(exceptionNew, addData);
+      var @throw = Throw(exceptionInit);
 
-      var result = Expression.Parameter(expression.Type);
-      var assign = Expression.Assign(result, expression);
+      var result = Parameter(expression.Type);
+      var assign = Assign(result, expression);
       var preparedAssert = ReplaceParameters(assert, assign);
-      var test = Expression.Not(preparedAssert);
-      var check = Expression.IfThen(test, @throw);
-      return Expression.Block(result.Type, new[] { result, }, check, result);
+      var test = Not(preparedAssert);
+      var check = IfThen(test, @throw);
+      return Block(result.Type, new[] { result, }, check, result);
     }
 
     private static MemberListBinding AddExceptionData(IDictionary<Expression, Expression> items) {
@@ -263,8 +263,8 @@ namespace GBricks.Collections
 
       var elements =
           from item in items
-          select Expression.ElementInit(ExceptionDataAddMethod, item.Key, item.Value);
-      return Expression.ListBind(ExceptionDataProperty, elements);
+          select ElementInit(ExceptionDataAddMethod, item.Key, item.Value);
+      return ListBind(ExceptionDataProperty, elements);
     }
 
     #endregion Comparison Helpers
@@ -330,35 +330,29 @@ namespace GBricks.Collections
     #region Build Methods
 
     private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-      var expression = Expressions.Select(item => item.AsEquals(x, y, assert)).Aggregate((left, right) => Expression.AndAlso(left, right));
+      var expression = Expressions.Select(item => item.AsEquals(x, y, assert)).Aggregate((left, right) => AndAlso(left, right));
       var body = IsValueType
         ? expression
         // (object)x == (object)y || ((object)x != null && (object)y != null && expression);
-        : Expression.OrElse(
-            ReferenceEqual(x, y),
-            Expression.AndAlso(
-              Expression.AndAlso(IsNotNull(x), IsNotNull(y)),
-              expression));
-      return Expression.Lambda<Func<T, T, bool>>(body, x, y);
+        : OrElse(ReferenceEqual(x, y), AndAlso(AndAlso(IsNotNull(x), IsNotNull(y)), expression));
+      return Lambda<Func<T, T, bool>>(body, x, y);
     }
 
     private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj) {
       var list = Expressions.Select(item => item.AsGetHashCode(obj)).ToList();
       var expression = list.Skip(1).Select((item, index) => Tuple.Create(item, index + 1))
-        .Aggregate(list.First(), (acc, item) =>
-          Expression.ExclusiveOr(acc,
-            Expression.Call(RotateRightDelegate.Method, item.Item1, Expression.Constant(item.Item2))));
+        .Aggregate(list.First(), (acc, item) => ExclusiveOr(acc, Call(RotateRightDelegate.Method, item.Item1, Constant(item.Item2))));
       var body = IsValueType
         ? expression
         // ((object)obj == null) ? 0 : expression;
-        : Expression.Condition(IsNull(obj), Zero, expression);
-      return Expression.Lambda<Func<T, int>>(body, obj);
+        : Condition(IsNull(obj), Zero, expression);
+      return Lambda<Func<T, int>>(body, obj);
     }
 
     private Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
       var reverse = Expressions.Select(item => item.AsCompare(x, y, assert)).Reverse().ToList();
-      Expression seed = Expression.Return(Return, reverse.First());
-      var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => Expression.IfThenElse(Expression.NotEqual(Expression.Assign(Compare, value), Zero), ReturnCompare, acc));
+      Expression seed = Return(Return, reverse.First());
+      var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => IfThenElse(NotEqual(Assign(Compare, value), Zero), ReturnCompare, acc));
       var body = IsValueType
         ? expression
         // if((object)x == (object)y) {
@@ -370,11 +364,9 @@ namespace GBricks.Collections
         // } else {
         //   return expression;
         // }//if
-        : Expression.IfThenElse(ReferenceEqual(x, y), ReturnZero,
-            Expression.IfThenElse(IsNull(x), ReturnMinusOne,
-              Expression.IfThenElse(IsNull(y), ReturnOne, expression)));
-      var block = Expression.Block(CompareVariables, body, LabelZero);
-      return Expression.Lambda<Func<T, T, int>>(block, x, y);
+        : IfThenElse(ReferenceEqual(x, y), ReturnZero, IfThenElse(IsNull(x), ReturnMinusOne, IfThenElse(IsNull(y), ReturnOne, expression)));
+      var block = Block(CompareVariables, body, LabelZero);
+      return Lambda<Func<T, T, int>>(block, x, y);
     }
 
     #endregion Build Methods
