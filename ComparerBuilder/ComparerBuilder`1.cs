@@ -59,7 +59,6 @@ namespace GBricks.Collections
       Expressions = expressions;
     }
 
-    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
     private ImmutableArray<IComparerExpression> Expressions { get; }
 
     #region Add Expressions
@@ -273,45 +272,54 @@ namespace GBricks.Collections
 
     #region Replace Parameters
 
-    private static Expression ReplaceParameters(LambdaExpression expression, params Expression[] parameters) {
+    private static Expression ReplaceParameters(LambdaExpression expression, Expression first, Expression second = null) {
       if(expression == null) {
         throw new ArgumentNullException(nameof(expression));
-      } else if(parameters == null) {
-        throw new ArgumentNullException(nameof(parameters));
-      } else if(expression.Parameters.Count != parameters.Length) {
-        throw new ArgumentException("expression.Parameters.Count != parameters.Length", nameof(parameters));
+      } else if(expression.Parameters.Count != (second == null ? 1 : 2)) {
+        throw new ArgumentException($"expression.Parameters.Count != {(second == null ? 1 : 2)}", nameof(expression));
       }//if
 
-      if(!expression.Parameters.Any()) {
-        return expression;
-      }//if
-
-      var items = expression.Parameters.Zip(parameters, (key, value) => new KeyValuePair<Expression, Expression>(key, value));
-      var replace = new ReplaceVisitor(items);
+      var replace = second == null
+        ? new ReplaceVisitor(expression.Parameters[0], first)
+        : new ReplaceVisitor(expression.Parameters[0], first, expression.Parameters[1], second);
       return replace.Visit(expression.Body);
     }
 
     private sealed class ReplaceVisitor : ExpressionVisitor
     {
-      public ReplaceVisitor(IEnumerable<KeyValuePair<Expression, Expression>> items) {
-        if(items == null) {
-          throw new ArgumentNullException(nameof(items));
+      public ReplaceVisitor(Expression what, Expression to) {
+        if(what == null) {
+          throw new ArgumentNullException(nameof(what));
+        } else if(to == null) {
+          throw new ArgumentNullException(nameof(to));
         }//if
 
-        var dictionary = new Dictionary<Expression, Expression>();
-        foreach(var item in items) {
-          dictionary.Add(item.Key, item.Value);
-        }//for
-
-        Items = new ReadOnlyDictionary<Expression, Expression>(dictionary);
+        What = what;
+        To = to;
       }
 
-      public IReadOnlyDictionary<Expression, Expression> Items { get; }
+      public ReplaceVisitor(Expression what, Expression to, Expression what2, Expression to2) : this(what, to) {
+        if(what2 == null) {
+          throw new ArgumentNullException(nameof(what2));
+        } else if(to2 == null) {
+          throw new ArgumentNullException(nameof(to2));
+        }//if
+
+        What2 = what2;
+        To2 = to2;
+      }
+
+      public Expression What { get; }
+      public Expression To { get; }
+
+      public Expression What2 { get; }
+      public Expression To2 { get; }
 
       public override Expression Visit(Expression node) {
-        Expression to;
-        if(node != null && Items.TryGetValue(node, out to)) {
-          return to;
+        if(node == What) {
+          return To;
+        } else if(node != null && node == What2) {
+          return To2;
         } else {
           return base.Visit(node);
         }//if
