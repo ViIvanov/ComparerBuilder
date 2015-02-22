@@ -18,8 +18,8 @@ static class Example
       .Add(value => value.Test1 % 2)
       .Add(value => value.Test2 != null ? value.Test2.Value.Date : default(DateTime));
 
-    var builderData = new ComparerBuilder<Data>()
-      .Add(builderBaseData)
+    var builderData = builderBaseData
+      .AsDerived<Data>()
       .Add(value => value.SubData1, builderSubData);
 
     var equalityComparer = builderData.BuildEqualityComparer();
