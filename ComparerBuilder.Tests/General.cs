@@ -22,7 +22,7 @@ namespace ComparerBuilder.Tests
 
       var builderData = builderBaseDataByTest1
         .Add(builderBaseDataByTest2)
-        .AsDerived<Data>()
+        .ConvertTo<Data>()
         .Add(value => value.SubData1, builderSubData);
 
       var equalityComparer = builderData.CreateEqualityComparer();

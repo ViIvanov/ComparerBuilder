@@ -86,7 +86,7 @@ namespace GBricks.Collections
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
-      var expr = new ChildComparerExpression<TProperty>(expression, builder);
+      var expr = new ComparerExpression<TProperty>(expression, builder);
       return Add(expr);
     }
 
@@ -126,7 +126,7 @@ namespace GBricks.Collections
       }//if
     }
 
-    public ComparerBuilder<TDerived> AsDerived<TDerived>() where TDerived : T {
+    public ComparerBuilder<TDerived> ConvertTo<TDerived>() where TDerived : T {
       return new ComparerBuilder<TDerived>(Expressions);
     }
 
@@ -241,10 +241,9 @@ namespace GBricks.Collections
       var args = NewArrayInit(typeof(object), xAsObject, yAsObject, Constant(expression.ToString()));
       var message = Call(StringFormatMethod, format, args);
       var exceptionNew = New(InvalidOperationExceptionCtor, message);
-      var addData = AddExceptionData(new Dictionary<Expression, Expression>(2) {
-        [Constant(nameof(x))] = xAsObject,
-        [Constant(nameof(y))] = yAsObject,
-      });
+      var initX = ElementInit(ExceptionDataAddMethod, Constant(nameof(x)), xAsObject);
+      var initY = ElementInit(ExceptionDataAddMethod, Constant(nameof(y)), yAsObject);
+      var addData = ListBind(ExceptionDataProperty, initX, initY);
       var exceptionInit = MemberInit(exceptionNew, addData);
       var @throw = Throw(exceptionInit);
 
@@ -254,17 +253,6 @@ namespace GBricks.Collections
       var test = Not(preparedAssert);
       var check = IfThen(test, @throw);
       return Block(result.Type, new[] { result, }, check, result);
-    }
-
-    private static MemberListBinding AddExceptionData(IDictionary<Expression, Expression> items) {
-      if(items == null) {
-        throw new ArgumentNullException(nameof(items));
-      }//if
-
-      var elements =
-          from item in items
-          select ElementInit(ExceptionDataAddMethod, item.Key, item.Value);
-      return ListBind(ExceptionDataProperty, elements);
     }
 
     #endregion Comparison Helpers
@@ -293,8 +281,8 @@ namespace GBricks.Collections
           throw new ArgumentNullException(nameof(to));
         }//if
 
-        What = what;
-        To = to;
+        FirstWhat = what;
+        FirstTo = to;
       }
 
       public ReplaceVisitor(Expression what, Expression to, Expression what2, Expression to2) : this(what, to) {
@@ -304,21 +292,21 @@ namespace GBricks.Collections
           throw new ArgumentNullException(nameof(to2));
         }//if
 
-        What2 = what2;
-        To2 = to2;
+        SecondWhat = what2;
+        SecondTo = to2;
       }
 
-      public Expression What { get; }
-      public Expression To { get; }
+      public Expression FirstWhat { get; }
+      public Expression FirstTo { get; }
 
-      public Expression What2 { get; }
-      public Expression To2 { get; }
+      public Expression SecondWhat { get; }
+      public Expression SecondTo { get; }
 
       public override Expression Visit(Expression node) {
-        if(node == What) {
-          return To;
-        } else if(node != null && node == What2) {
-          return To2;
+        if(node == FirstWhat) {
+          return FirstTo;
+        } else if(node != null && node == SecondWhat) {
+          return SecondTo;
         } else {
           return base.Visit(node);
         }//if
@@ -454,9 +442,9 @@ namespace GBricks.Collections
       #endregion IComparerExpression Members
     }
 
-    private sealed class ChildComparerExpression<TProperty> : IComparerExpression
+    private sealed class ComparerExpression<TProperty> : IComparerExpression
     {
-      public ChildComparerExpression(LambdaExpression expression, ComparerBuilder<TProperty> builder) {
+      public ComparerExpression(LambdaExpression expression, ComparerBuilder<TProperty> builder) {
         if(expression == null) {
           throw new ArgumentNullException(nameof(expression));
         } else if(builder == null) {

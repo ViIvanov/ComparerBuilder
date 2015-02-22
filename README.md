@@ -5,7 +5,7 @@ Class for building equality comparers and sort comparers.
 
 You can find reasons for making `ComparerBuilder<>` in this old post on [RSDN](http://rsdn.ru/forum/src/3914421.1) (in Russian).
 
-Now `ComparerBuilder<>` writen on C# 6.0. You can compose a comparer builder from other comparer builders. Also, it supports "checked" comparers, that throws an exception when `IEqualityComparer<>::Equals` returns `false` or `IComparer<>::Comparer` returns not 0. "Checked" comparers are helpful in a debugging scenarios.
+Now `ComparerBuilder<>` written on C# 6.0. You can compose a comparer builder from other comparer builders. Also, it supports "checked" comparers, that throws an exception when `IEqualityComparer<>::Equals` returns `false` or `IComparer<>::Comparer` returns not 0. "Checked" comparers are helpful in a debugging scenarios.
 
 ```cs
 static class Example
@@ -19,7 +19,7 @@ static class Example
       .Add(value => value.Test2 != null ? value.Test2.Value.Date : default(DateTime));
 
     var builderData = builderBaseData
-      .AsDerived<Data>()
+      .ConvertTo<Data>()
       .Add(value => value.SubData1, builderSubData);
 
     var equalityComparer = builderData.BuildEqualityComparer();
@@ -30,7 +30,7 @@ static class Example
     var data3 = new Data(6, DateTime.Now, new SubData("c"));
     var data4 = new Data(1, null, new SubData("b"));
 
-    var test1 = equalityComparer.Equals(data1, data2); // True, but may be False
+    var test1 = equalityComparer.Equals(data1, data2); // True, but may be False ;o)
     var test2 = equalityComparer.Equals(data2, data3); // False
     var test3 = comparer.Compare(data1, data4); // -1
   }
