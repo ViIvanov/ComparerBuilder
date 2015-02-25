@@ -99,8 +99,6 @@ namespace GBricks.Collections
     }
 
     public ComparerBuilder<T> AddAuto<TProperty>(Expression<Func<T, TProperty>> expression) {
-      var equality = EqualityComparer<TProperty>.Default;
-      var comparison = Comparer<TProperty>.Default;
       return Add(expression, default(Expression), default(Expression));
     }
 
