@@ -69,48 +69,39 @@ namespace GBricks.Collections
       return new ComparerBuilder<T>(expressions);
     }
 
-    private ComparerBuilder<T> Add(LambdaExpression expression, Expression equalityComparer = null, Expression comparisonComparer = null) {
-      var expr = new ComparerExpression(expression, equalityComparer, comparisonComparer);
+    private ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, Expression equalityComparer, Expression comparisonComparer) {
+      var expr = new ComparerExpression<TProperty>(expression, equalityComparer, comparisonComparer);
       return Add(expr);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, IEqualityComparer<TProperty> equalityComparer = null, IComparer<TProperty> comparisonComparer = null) {
-      var equality = NullableConstant(equalityComparer);
-      var comparison = NullableConstant(comparisonComparer);
+      var equality = Constant(equalityComparer ?? EqualityComparer<TProperty>.Default);
+      var comparison = Constant(comparisonComparer ?? Comparer<TProperty>.Default);
       return Add(expression, equality, comparison);
     }
 
     public ComparerBuilder<T> Add<TProperty, TComparer>(Expression<Func<T, TProperty>> expression, TComparer comparer) where TComparer : IEqualityComparer<TProperty>, IComparer<TProperty> {
-      var constant = NullableConstant(comparer);
-      return Add(expression, constant, constant);
+      if(comparer == null) {
+        throw new ArgumentNullException(nameof(comparer));
+      }//if
+
+      if(comparer == null) {
+        return AddAuto(expression);
+      } else {
+        var constant = Constant(comparer);
+        return Add(expression, constant, constant);
+      }//if
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
-      var expr = new ComparerExpression<TProperty>(expression, builder);
+      var expr = new NestedComparerExpression<TProperty>(expression, builder);
       return Add(expr);
     }
 
-    private ComparerBuilder<T> AddDefault(LambdaExpression expression) {
-      if(expression == null) {
-        throw new ArgumentNullException(nameof(expression));
-      }//if
-
-      Func<Type, string, Expression> create = (defitition, propertyName) => {
-        var type = defitition.MakeGenericType(expression.ReturnType);
-        var property = type.GetProperty(propertyName);
-        var instance = property.GetValue(null, null);
-        return Constant(instance);
-      };
-
-      var equality = create(typeof(EqualityComparer<>), nameof(EqualityComparer<T>.Default));
-      var comparison = create(typeof(Comparer<>), nameof(Comparer<T>.Default));
-      return Add(expression, equality, comparison);
-    }
-
-    public ComparerBuilder<T> AddDefault<TProperty>(Expression<Func<T, TProperty>> expression) {
+    public ComparerBuilder<T> AddAuto<TProperty>(Expression<Func<T, TProperty>> expression) {
       var equality = EqualityComparer<TProperty>.Default;
       var comparison = Comparer<TProperty>.Default;
-      return Add(expression, equality, comparison);
+      return Add(expression, default(Expression), default(Expression));
     }
 
     public ComparerBuilder<T> Add(ComparerBuilder<T> other) {
@@ -119,7 +110,7 @@ namespace GBricks.Collections
       }//if
 
       if(Expressions.IsDefaultOrEmpty || other.Expressions.IsDefaultOrEmpty) {
-        return other.Expressions.IsDefaultOrEmpty ? this : other;
+        return Expressions.IsDefaultOrEmpty ? other : this;
       } else {
         var expressions = Expressions.AddRange(other.Expressions);
         return new ComparerBuilder<T>(expressions);
@@ -136,7 +127,6 @@ namespace GBricks.Collections
 
     private static BinaryExpression IsNull(Expression value) => ReferenceEqual(value, Null);
     private static BinaryExpression IsNotNull(Expression value) => ReferenceNotEqual(value, Null);
-    private static ConstantExpression NullableConstant(object value) => value != null ? Constant(value) : null;
 
     private static Expression ToObject(Expression expression) {
       if(expression == null) {
@@ -281,30 +271,30 @@ namespace GBricks.Collections
           throw new ArgumentNullException(nameof(to));
         }//if
 
-        FirstWhat = what;
-        FirstTo = to;
+        What = what;
+        To = to;
       }
 
-      public ReplaceVisitor(Expression what, Expression to, Expression what2, Expression to2) : this(what, to) {
-        if(what2 == null) {
-          throw new ArgumentNullException(nameof(what2));
-        } else if(to2 == null) {
-          throw new ArgumentNullException(nameof(to2));
+      public ReplaceVisitor(Expression what, Expression to, Expression secondWhat, Expression secondTo) : this(what, to) {
+        if(secondWhat == null) {
+          throw new ArgumentNullException(nameof(secondWhat));
+        } else if(secondTo == null) {
+          throw new ArgumentNullException(nameof(secondTo));
         }//if
 
-        SecondWhat = what2;
-        SecondTo = to2;
+        SecondWhat = secondWhat;
+        SecondTo = secondTo;
       }
 
-      public Expression FirstWhat { get; }
-      public Expression FirstTo { get; }
+      public Expression What { get; }
+      public Expression To { get; }
 
       public Expression SecondWhat { get; }
       public Expression SecondTo { get; }
 
       public override Expression Visit(Expression node) {
-        if(node == FirstWhat) {
-          return FirstTo;
+        if(node == What) {
+          return To;
         } else if(node != null && node == SecondWhat) {
           return SecondTo;
         } else {
@@ -400,9 +390,9 @@ namespace GBricks.Collections
 
     #region Comparer Expressions
 
-    private sealed class ComparerExpression : IComparerExpression
+    private sealed class ComparerExpression<TProperty> : IComparerExpression
     {
-      public ComparerExpression(LambdaExpression expression, Expression equality = null, Expression comparison = null) {
+      public ComparerExpression(Expression<Func<T, TProperty>> expression, Expression equality = null, Expression comparison = null) {
         if(expression == null) {
           throw new ArgumentNullException(nameof(expression));
         }//if
@@ -412,7 +402,7 @@ namespace GBricks.Collections
         Comparer = comparison;
       }
 
-      public LambdaExpression Expression { get; }
+      public Expression<Func<T, TProperty>> Expression { get; }
       public Expression EqualityComparer { get; }
       public Expression Comparer { get; }
 
@@ -442,9 +432,9 @@ namespace GBricks.Collections
       #endregion IComparerExpression Members
     }
 
-    private sealed class ComparerExpression<TProperty> : IComparerExpression
+    private sealed class NestedComparerExpression<TProperty> : IComparerExpression
     {
-      public ComparerExpression(LambdaExpression expression, ComparerBuilder<TProperty> builder) {
+      public NestedComparerExpression(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
         if(expression == null) {
           throw new ArgumentNullException(nameof(expression));
         } else if(builder == null) {
@@ -455,7 +445,7 @@ namespace GBricks.Collections
         Builder = builder;
       }
 
-      public LambdaExpression Expression { get; }
+      public Expression<Func<T, TProperty>> Expression { get; }
       public ComparerBuilder<TProperty> Builder { get; }
 
       public override string ToString() => Expression.ToString();
