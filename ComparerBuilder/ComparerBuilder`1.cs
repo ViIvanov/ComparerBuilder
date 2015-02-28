@@ -52,11 +52,13 @@ namespace GBricks.Collections
 
     public ComparerBuilder() { }
 
-    private ComparerBuilder(ImmutableArray<IComparerExpression> expressions) {
+    private ComparerBuilder(ImmutableArray<IComparerExpression> expressions, ComparerBuilderInterception interception) {
       Expressions = expressions;
+      Interception = interception;
     }
 
     private ImmutableArray<IComparerExpression> Expressions { get; }
+    private ComparerBuilderInterception Interception { get; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => $"Expressions: {(Expressions.IsDefaultOrEmpty ? 0 : Expressions.Length)} item(s).";
@@ -71,7 +73,7 @@ namespace GBricks.Collections
       }//if
 
       var expressions = Expressions.IsDefaultOrEmpty ? ImmutableArray.Create(expression) : Expressions.Add(expression);
-      return new ComparerBuilder<T>(expressions);
+      return new ComparerBuilder<T>(expressions, Interception);
     }
 
     private ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, Expression equalityComparer, Expression comparisonComparer) {
@@ -112,12 +114,20 @@ namespace GBricks.Collections
         return Expressions.IsDefaultOrEmpty ? other : this;
       } else {
         var expressions = Expressions.AddRange(other.Expressions);
-        return new ComparerBuilder<T>(expressions);
+        return new ComparerBuilder<T>(expressions, Interception);
       }//if
     }
 
     public ComparerBuilder<TDerived> ConvertTo<TDerived>() where TDerived : T {
-      return new ComparerBuilder<TDerived>(Expressions);
+      return new ComparerBuilder<TDerived>(Expressions, Interception);
+    }
+
+    public ComparerBuilder<T> WithInterception(ComparerBuilderInterception value) {
+      if(value != Interception) {
+        return new ComparerBuilder<T>(Expressions, value);
+      } else {
+        return this;
+      }//if
     }
 
     #endregion Add Expressions
@@ -217,45 +227,80 @@ namespace GBricks.Collections
       return Call(comparer, method, arguments);
     }
 
-    private static Expression ApplyAssert(LambdaExpression assert, Expression expression, Expression x, Expression y) {
-      if(assert == null) {
-        throw new ArgumentNullException(nameof(assert));
-      } else if(expression == null) {
-        throw new ArgumentNullException(nameof(expression));
+    #endregion Comparison Helpers
+
+    #region Interception
+
+    private static Expression InterceptEquals<TProperty>(ComparerBuilderInterception interception, Expression expression, Expression x, Expression y, Expression comparer) {
+      if(interception == null) {
+        return expression;
+      } else {
+        const string MethodName = nameof(ComparerBuilderInterception.InterceptEquals);
+        var comparerType = typeof(IEqualityComparer<TProperty>);
+        var valueType = typeof(TProperty);
+        return ApplyInterception(interception, MethodName, expression, valueType, x, y, comparer, comparerType, (a, b, c) => MakeEquals(a, b, c));
       }//if
-
-      // {expression.Type} result;
-      // if(!assert(result = {expression})) {
-      //   throw new InvalidOperationException("…") {
-      //     Data = {
-      //       { "x", x },
-      //       { "y", y },
-      //     },
-      //   };
-      // }//if
-      // return result;
-
-      var format = Constant("Failed to compare values \"{0}\" and \"{1}\" in the expression \"{2}\".");
-      var xAsObject = ToObject(x);
-      var yAsObject = ToObject(y);
-      var args = NewArrayInit(typeof(object), xAsObject, yAsObject, Constant(expression.ToString()));
-      var message = Call(StringFormatMethod, format, args);
-      var exceptionNew = New(InvalidOperationExceptionCtor, message);
-      var initX = ElementInit(ExceptionDataAddMethod, Constant(nameof(x)), xAsObject);
-      var initY = ElementInit(ExceptionDataAddMethod, Constant(nameof(y)), yAsObject);
-      var addData = ListBind(ExceptionDataProperty, initX, initY);
-      var exceptionInit = MemberInit(exceptionNew, addData);
-      var @throw = Throw(exceptionInit);
-
-      var result = Parameter(expression.Type);
-      var assign = Assign(result, expression);
-      var preparedAssert = ReplaceParameters(assert, assign);
-      var notAssert = Not(preparedAssert);
-      var check = IfThen(notAssert, @throw);
-      return Block(result.Type, new[] { result, }, check, result);
     }
 
-    #endregion Comparison Helpers
+    private static Expression InterceptGetHashCode<TProperty>(ComparerBuilderInterception interception, Expression expression, Expression obj, Expression comparer) {
+      if(interception == null) {
+        return expression;
+      } else {
+        const string MethodName = nameof(ComparerBuilderInterception.InterceptGetHashCode);
+        var comparerType = typeof(IEqualityComparer<TProperty>);
+        var valueType = typeof(TProperty);
+        return ApplyInterception(interception, MethodName, expression, valueType, obj, null, comparer, comparerType, (a, b, c) => MakeGetHashCode(a, c));
+      }//if
+    }
+
+    private static Expression InterceptCompare<TProperty>(ComparerBuilderInterception interception, Expression expression, Expression x, Expression y, Expression comparer) {
+      if(interception == null) {
+        return expression;
+      } else {
+        const string MethodName = nameof(ComparerBuilderInterception.InterceptCompare);
+        var comparerType = typeof(IComparer<TProperty>);
+        var valueType = typeof(TProperty);
+        return ApplyInterception(interception, MethodName, expression, valueType, x, y, comparer, comparerType, (a, b, c) => MakeCompare(a, b, c));
+      }//if
+    }
+
+    private static Expression ApplyInterception(ComparerBuilderInterception interception, string methodName, Expression expression,
+      Type valueType, Expression first, Expression second, Expression comparer, Type comparerType, Func<Expression, Expression, Expression, Expression> make) {
+      if(interception == null) {
+        throw new ArgumentNullException(nameof(interception));
+      } else if(expression == null) {
+        throw new ArgumentNullException(nameof(expression));
+      } else if(first == null) {
+        throw new ArgumentNullException(nameof(first));
+      } else if(make == null) {
+        throw new ArgumentNullException(nameof(make));
+      }//if
+
+      // return {interception}.{methodName}<{valueType}>(expression, {expression}, {x}[, {y}], {comparer});
+
+      var instance = Constant(interception);
+      var expressionArg = Constant(expression, typeof(Expression));
+
+      var firstArg = Parameter(first.Type);
+      var assignFirst = Assign(firstArg, first);
+      var useSecond = second != null;
+      var secondArg = useSecond ? Parameter(second.Type) : null;
+      var assignSecond = useSecond ? Assign(secondArg, second) : null;
+      var variables = useSecond ? new[] { firstArg, secondArg, } : new[] { firstArg, };
+
+      var valueArg = make(firstArg, secondArg, comparer);
+      var comparerArg = comparer ?? Constant(null, comparerType);
+      var arguments = secondArg != null
+        ? new[] { expressionArg, valueArg, firstArg, secondArg, comparerArg, }
+        : new[] { expressionArg, valueArg, firstArg, comparerArg, };
+      var call = Call(instance, methodName, new[] { valueType, }, arguments);
+      var expressions = useSecond
+        ? new Expression[] { assignFirst, assignSecond, call, }
+        : new Expression[] { assignFirst, call, };
+      return Block(expression.Type, variables, expressions);
+    }
+
+    #endregion Interception
 
     #region Replace Parameters
 
@@ -317,8 +362,8 @@ namespace GBricks.Collections
 
     #region Build Methods
 
-    private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-      var expression = Expressions.Select(item => item.AsEquals(x, y, assert)).Aggregate((left, right) => AndAlso(left, right));
+    private Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+      var expression = Expressions.Select(item => item.AsEquals(x, y, interception)).Aggregate((left, right) => AndAlso(left, right));
       var body = IsValueType
         ? expression
         // (object)x == (object)y || ((object)x != null && (object)y != null && expression);
@@ -326,8 +371,8 @@ namespace GBricks.Collections
       return Lambda<Func<T, T, bool>>(body, x, y);
     }
 
-    private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj) {
-      var list = Expressions.Select(item => item.AsGetHashCode(obj)).ToList();
+    private Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
+      var list = Expressions.Select(item => item.AsGetHashCode(obj, interception)).ToList();
       var expression = list.Skip(1).Select((item, index) => Tuple.Create(item, index + 1))
         .Aggregate(list.First(), (acc, item) => ExclusiveOr(acc, Call(RotateRightDelegate.Method, item.Item1, Constant(item.Item2))));
       var body = IsValueType
@@ -337,8 +382,8 @@ namespace GBricks.Collections
       return Lambda<Func<T, int>>(body, obj);
     }
 
-    private Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-      var reverse = Expressions.Select(item => item.AsCompare(x, y, assert)).Reverse().ToList();
+    private Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+      var reverse = Expressions.Select(item => item.AsCompare(x, y, interception)).Reverse().ToList();
       Expression seed = Return(Return, reverse.First());
       var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => IfThenElse(NotEqual(Assign(Compare, value), Zero), ReturnCompare, acc));
       var body = IsValueType
@@ -368,33 +413,33 @@ namespace GBricks.Collections
       }//if
     }
 
-    private EqualityComparer<T> CreateEqualityComparer(Expression<Func<bool, bool>> assert) {
+    private EqualityComparer<T> CreateEqualityComparer(ComparerBuilderInterception interception = null) {
       ThrowIfEmpty();
-      var equals = BuildEquals(X, Y, assert);
-      var hashCode = BuildGetHashCode(Obj);
+      var equals = BuildEquals(X, Y, interception);
+      var hashCode = BuildGetHashCode(Obj, interception);
       return Comparers.Create(equals.Compile(), hashCode.Compile());
     }
 
     public EqualityComparer<T> CreateEqualityComparer() {
-      return CreateEqualityComparer(assert: null);
+      return CreateEqualityComparer(interception: null);
     }
 
-    public EqualityComparer<T> CreateEqualityComparerChecked(Expression<Func<bool, bool>> assert = null) {
-      return CreateEqualityComparer(assert ?? (value => value));
+    public EqualityComparer<T> CreateEqualityComparerChecked(ComparerBuilderInterception interception = null) {
+      return CreateEqualityComparer(interception ?? Interception ?? DefaultInterception.Instance);
     }
 
-    private Comparer<T> CreateComparer(Expression<Func<int, bool>> assert) {
+    private Comparer<T> CreateComparer(ComparerBuilderInterception interception = null) {
       ThrowIfEmpty();
-      var compare = BuildCompare(X, Y, assert);
+      var compare = BuildCompare(X, Y, interception);
       return Comparers.Create(compare.Compile());
     }
 
     public Comparer<T> CreateComparer() {
-      return CreateComparer(assert: null);
+      return CreateComparer(interception: null);
     }
 
-    public Comparer<T> CreateComparerChecked(Expression<Func<int, bool>> assert = null) {
-      return CreateComparer(assert ?? (value => value == 0));
+    public Comparer<T> CreateComparerChecked(ComparerBuilderInterception interception = null) {
+      return CreateComparer(interception ?? Interception ?? DefaultInterception.Instance);
     }
 
     #endregion Build Comparers
@@ -421,23 +466,24 @@ namespace GBricks.Collections
 
       #region IComparerExpression Members
 
-      public Expression AsEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
+      public Expression AsEquals(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
         var first = ReplaceParameters(Expression, x);
         var second = ReplaceParameters(Expression, y);
         var expression = MakeEquals(first, second, EqualityComparer);
-        return assert != null ? ApplyAssert(assert, expression, first, second) : expression;
+        return InterceptEquals<TProperty>(interception, expression, first, second, EqualityComparer);
       }
 
-      public Expression AsGetHashCode(ParameterExpression obj) {
+      public Expression AsGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
         var value = ReplaceParameters(Expression, obj);
-        return MakeGetHashCode(value, EqualityComparer);
+        var expression = MakeGetHashCode(value, EqualityComparer);
+        return InterceptGetHashCode<TProperty>(interception, expression, value, EqualityComparer);
       }
 
-      public Expression AsCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
+      public Expression AsCompare(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
         var first = ReplaceParameters(Expression, x);
         var second = ReplaceParameters(Expression, y);
         var expression = MakeCompare(first, second, Comparer);
-        return assert != null ? ApplyAssert(assert, expression, first, second) : expression;
+        return InterceptCompare<TProperty>(interception, expression, first, second, Comparer);
       }
 
       #endregion IComparerExpression Members
@@ -459,25 +505,28 @@ namespace GBricks.Collections
       public Expression<Func<T, TProperty>> Expression { get; }
       public ComparerBuilder<TProperty> Builder { get; }
 
+      private ComparerBuilderInterception GetInterception(ComparerBuilderInterception value)
+        => value == DefaultInterception.Instance && Builder.Interception != null ? Builder.Interception : value;
+
       public override string ToString() => Expression.ToString();
 
       #region IComparerExpression Members
 
-      public Expression AsEquals(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-        var lambda = Builder.BuildEquals(ComparerBuilder<TProperty>.X, ComparerBuilder<TProperty>.Y, assert);
+      public Expression AsEquals(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+        var lambda = Builder.BuildEquals(ComparerBuilder<TProperty>.X, ComparerBuilder<TProperty>.Y, GetInterception(interception));
         var first = ReplaceParameters(Expression, x);
         var second = ReplaceParameters(Expression, y);
         return ReplaceParameters(lambda, first, second);
       }
 
-      public Expression AsGetHashCode(ParameterExpression obj) {
-        var lambda = Builder.BuildGetHashCode(ComparerBuilder<TProperty>.Obj);
+      public Expression AsGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
+        var lambda = Builder.BuildGetHashCode(ComparerBuilder<TProperty>.Obj, GetInterception(interception));
         var value = ReplaceParameters(Expression, obj);
         return ReplaceParameters(lambda, value);
       }
 
-      public Expression AsCompare(ParameterExpression x, ParameterExpression y, LambdaExpression assert = null) {
-        var lambda = Builder.BuildCompare(ComparerBuilder<TProperty>.X, ComparerBuilder<TProperty>.Y, assert);
+      public Expression AsCompare(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+        var lambda = Builder.BuildCompare(ComparerBuilder<TProperty>.X, ComparerBuilder<TProperty>.Y, GetInterception(interception));
         var first = ReplaceParameters(Expression, x);
         var second = ReplaceParameters(Expression, y);
         return ReplaceParameters(lambda, first, second);

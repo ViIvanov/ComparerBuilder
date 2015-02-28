@@ -43,7 +43,9 @@
   <ItemGroup>
     <Compile Include="ComparerBuilder`1.cs" />
     <Compile Include="Comparers.cs" />
+    <Compile Include="DefaultInterception.cs" />
     <Compile Include="IComparerExpression.cs" />
+    <Compile Include="ComparerBuilderInterception.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
