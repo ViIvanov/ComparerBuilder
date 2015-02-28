@@ -43,6 +43,29 @@ namespace ComparerBuilder.Tests
         throw;
       }
     }
+
+    #region Regular Tests
+
+    [TestMethod]
+    public void IsEmpty() {
+      var builder = new ComparerBuilder<BaseData>();
+      Assert.IsTrue(builder.IsEmpty, "builder.IsEmpty should be true after object creation.");
+
+      builder = builder.Add(item => item.Test1);
+      Assert.IsFalse(builder.IsEmpty, "builder.IsEmpty should be false after object creation.");
+    }
+
+    [TestMethod]
+    public void Default() {
+      var builder = new ComparerBuilder<BaseData>().Add(item => item.Test1);
+      var equality = builder.CreateEqualityComparer();
+
+      var x = new BaseData(1);
+      var y = new BaseData(1);
+      Assert.IsTrue(equality.Equals(x, y), $"{x.Test1} != {y.Test1}");
+    }
+
+    #endregion Regular Tests
   }
 }
 
