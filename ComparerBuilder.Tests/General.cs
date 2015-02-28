@@ -15,10 +15,10 @@ namespace ComparerBuilder.Tests
         .Add(value => value.Test ?? String.Empty, StringComparer.OrdinalIgnoreCase);
 
       var builderBaseDataByTest1 = new ComparerBuilder<BaseData>()
-        .AddAuto(value => value.Test1 % 2);
+        .Add(value => value.Test1 % 2);
 
       var builderBaseDataByTest2 = new ComparerBuilder<BaseData>()
-        .AddAuto(value => value.Test2 != null ? value.Test2.Value.Date : default(DateTime));
+        .Add(value => value.Test2 != null ? value.Test2.Value.Date : default(DateTime));
 
       var builderData = builderBaseDataByTest1
         .Add(builderBaseDataByTest2)

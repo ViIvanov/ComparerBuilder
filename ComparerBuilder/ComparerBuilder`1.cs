@@ -11,7 +11,7 @@ namespace GBricks.Collections
 {
   using static Expression;
 
-  [DebuggerDisplay("Expressions: {Expressions.Length}")]
+  [DebuggerDisplay("{DebuggerDisplay}")]
   public sealed class ComparerBuilder<T>
   {
     #region Cached Expression and Reflection objects
@@ -58,6 +58,9 @@ namespace GBricks.Collections
 
     private ImmutableArray<IComparerExpression> Expressions { get; }
 
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Expressions: {(Expressions.IsDefaultOrEmpty ? 0 : Expressions.Length)} item(s).";
+
     #region Add Expressions
 
     private ComparerBuilder<T> Add(IComparerExpression expression) {
@@ -74,7 +77,11 @@ namespace GBricks.Collections
       return Add(expr);
     }
 
-    public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, IEqualityComparer<TProperty> equalityComparer = null, IComparer<TProperty> comparisonComparer = null) {
+    public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression) {
+      return Add(expression, default(Expression), default(Expression));
+    }
+
+    public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, IEqualityComparer<TProperty> equalityComparer, IComparer<TProperty> comparisonComparer) {
       var equality = Constant(equalityComparer ?? EqualityComparer<TProperty>.Default);
       var comparison = Constant(comparisonComparer ?? Comparer<TProperty>.Default);
       return Add(expression, equality, comparison);
@@ -85,21 +92,13 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(comparer));
       }//if
 
-      if(comparer == null) {
-        return AddAuto(expression);
-      } else {
-        var constant = Constant(comparer);
-        return Add(expression, constant, constant);
-      }//if
+      var constant = Constant(comparer);
+      return Add(expression, constant, constant);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
       var expr = new NestedComparerExpression<TProperty>(expression, builder);
       return Add(expr);
-    }
-
-    public ComparerBuilder<T> AddAuto<TProperty>(Expression<Func<T, TProperty>> expression) {
-      return Add(expression, default(Expression), default(Expression));
     }
 
     public ComparerBuilder<T> Add(ComparerBuilder<T> other) {
