@@ -47,6 +47,8 @@
     <Compile Include="IComparerExpression.cs" />
     <Compile Include="ComparerBuilderInterception.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ReplaceVisitor.cs" />
+    <Compile Include="SourceInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
