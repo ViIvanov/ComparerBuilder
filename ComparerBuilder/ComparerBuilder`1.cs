@@ -61,6 +61,8 @@ namespace GBricks.Collections
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => $"Expressions: {(Expressions.IsDefaultOrEmpty ? 0 : Expressions.Length)} item(s).";
 
+    public bool IsEmpty => Expressions.IsDefaultOrEmpty;
+
     #region Add Expressions
 
     private ComparerBuilder<T> Add(IComparerExpression expression) {
@@ -222,6 +224,17 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(expression));
       }//if
 
+      // {expression.Type} result;
+      // if(!assert(result = {expression})) {
+      //   throw new InvalidOperationException("…") {
+      //     Data = {
+      //       { "x", x },
+      //       { "y", y },
+      //     },
+      //   };
+      // }//if
+      // return result;
+
       var format = Constant("Failed to compare values \"{0}\" and \"{1}\" in the expression \"{2}\".");
       var xAsObject = ToObject(x);
       var yAsObject = ToObject(y);
@@ -237,8 +250,8 @@ namespace GBricks.Collections
       var result = Parameter(expression.Type);
       var assign = Assign(result, expression);
       var preparedAssert = ReplaceParameters(assert, assign);
-      var test = Not(preparedAssert);
-      var check = IfThen(test, @throw);
+      var notAssert = Not(preparedAssert);
+      var check = IfThen(notAssert, @throw);
       return Block(result.Type, new[] { result, }, check, result);
     }
 
@@ -250,7 +263,7 @@ namespace GBricks.Collections
       if(expression == null) {
         throw new ArgumentNullException(nameof(expression));
       } else if(expression.Parameters.Count != (second == null ? 1 : 2)) {
-        throw new ArgumentException($"expression.Parameters.Count != {(second == null ? 1 : 2)}", nameof(expression));
+        throw new ArgumentException($"{nameof(expression)}.Parameters.Count != {(second == null ? 1 : 2)}", nameof(expression));
       }//if
 
       var replace = second == null
@@ -348,11 +361,15 @@ namespace GBricks.Collections
 
     #region Build Comparers
 
-    private EqualityComparer<T> CreateEqualityComparer(Expression<Func<bool, bool>> assert) {
-      if(Expressions.IsDefaultOrEmpty) {
-        return Comparers.EmptyEqualityComparer<T>();
+    private void ThrowIfEmpty() {
+      if(IsEmpty) {
+        const string Message = "There are no expressions specified.";
+        throw new InvalidOperationException(Message);
       }//if
+    }
 
+    private EqualityComparer<T> CreateEqualityComparer(Expression<Func<bool, bool>> assert) {
+      ThrowIfEmpty();
       var equals = BuildEquals(X, Y, assert);
       var hashCode = BuildGetHashCode(Obj);
       return Comparers.Create(equals.Compile(), hashCode.Compile());
@@ -367,10 +384,7 @@ namespace GBricks.Collections
     }
 
     private Comparer<T> CreateComparer(Expression<Func<int, bool>> assert) {
-      if(Expressions.IsDefaultOrEmpty) {
-        return Comparers.EmptyComparer<T>();
-      }//if
-
+      ThrowIfEmpty();
       var compare = BuildCompare(X, Y, assert);
       return Comparers.Create(compare.Compile());
     }
