@@ -42,6 +42,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ComparerBuilder.cs" />
+    <Compile Include="ComparerBuilderInterceptionArgs`1.cs" />
     <Compile Include="ComparerBuilder`1.cs" />
     <Compile Include="ComparerExpression`1.cs" />
     <Compile Include="Comparers.cs" />

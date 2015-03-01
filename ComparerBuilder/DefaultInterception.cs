@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq.Expressions;
+﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace GBricks.Collections
@@ -11,32 +9,33 @@ namespace GBricks.Collections
 
     public static ComparerBuilderInterception Instance { get; } = new DefaultInterception();
 
-    private void Intercept<TValue, T>(Expression expression, TValue value, T x, T y, SourceInfo sourceInfo, [CallerMemberName] string memberName = null) {
-      Debug.Print($"{sourceInfo} : {memberName}({x}, {y}) returned {value} for {{{expression}}}");
+    private void Intercept<TValue, T>(TValue value, T first, T second, ComparerBuilderInterceptionArgs<T> args, bool hasSecond, [CallerMemberName] string memberName = null) {
+      var parameters = hasSecond ? $"{first}, {second}" : $"{first}";
+      Debug.Print($"{args.FilePath} ({args.LineNumber}) : {memberName}({parameters}) returned {value} for {{{args.Expression}}}");
     }
 
-    public override bool InterceptEquals<T>(Expression expression, bool value, T x, T y, IEqualityComparer<T> comparer, SourceInfo sourceInfo) {
+    public override bool InterceptEquals<T>(bool value, T x, T y, ComparerBuilderInterceptionArgs<T> args) {
       if(!value) {
-        Intercept(expression, value, x, y, sourceInfo);
+        Intercept(value, x, y, args, hasSecond: true);
       }//if
 
-      return base.InterceptEquals(expression, value, x, y, comparer, sourceInfo);
+      return base.InterceptEquals(value, x, y, args);
     }
 
-    public override int InterceptGetHashCode<T>(Expression expression, int value, T obj, IEqualityComparer<T> comparer, SourceInfo sourceInfo) {
+    public override int InterceptGetHashCode<T>(int value, T obj, ComparerBuilderInterceptionArgs<T> args) {
       if(value == 0) {
-        Debug.Print($"InterceptGetHashCode({obj}) returned {value} for {{{expression}}} at {sourceInfo}");
+        Intercept(value, obj, default(T), args, hasSecond: false);
       }//if
 
-      return base.InterceptGetHashCode(expression, value, obj, comparer, sourceInfo);
+      return base.InterceptGetHashCode(value, obj, args);
     }
 
-    public override int InterceptCompare<T>(Expression expression, int value, T x, T y, IComparer<T> comparer, SourceInfo sourceInfo) {
+    public override int InterceptCompare<T>(int value, T x, T y, ComparerBuilderInterceptionArgs<T> args) {
       if(value != 0) {
-        Intercept(expression, value, x, y, sourceInfo);
+        Intercept(value, x, y, args, hasSecond: true);
       }//if
 
-      return base.InterceptCompare(expression, value, x, y, comparer, sourceInfo);
+      return base.InterceptCompare(value, x, y, args);
     }
   }
 }

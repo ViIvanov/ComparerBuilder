@@ -14,8 +14,18 @@ namespace GBricks.Collections
   {
     private static readonly MethodInfo GetHashCodeMethodInfo = typeof(T).GetMethod(nameof(GetHashCode), BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
     private static readonly Type[] InterceptTypeArguments = { typeof(T), };
+    private static readonly ConstructorInfo InterceptionArgsCtor = typeof(ComparerBuilderInterceptionArgs<T>).GetConstructor(new[] {
+      typeof(Expression), // expression
+      typeof(IEqualityComparer<T>), // equalityComparer
+      typeof(IComparer<T>), // comparer
+      typeof(string), // filePath
+      typeof(int), // lineNumber
+    });
 
-    public ComparerExpression(LambdaExpression expression, Expression equality = null, Expression comparison = null, SourceInfo sourceInfo = default(SourceInfo)) {
+    private static readonly ConstantExpression NullEqualityComparer = Constant(null, typeof(IEqualityComparer<T>));
+    private static readonly ConstantExpression NullComparer = Constant(null, typeof(IComparer<T>));
+
+    public ComparerExpression(LambdaExpression expression, Expression equality, Expression comparison, string filePath, int lineNumber) {
       if(expression == null) {
         throw new ArgumentNullException(nameof(expression));
       }//if
@@ -23,13 +33,15 @@ namespace GBricks.Collections
       Expression = expression;
       EqualityComparer = equality;
       Comparer = comparison;
-      SourceInfo = sourceInfo;
+      FilePath = filePath ?? String.Empty;
+      LineNumber = lineNumber;
     }
 
     public LambdaExpression Expression { get; }
     public Expression EqualityComparer { get; }
     public Expression Comparer { get; }
-    public SourceInfo SourceInfo { get; }
+    public string FilePath { get; }
+    public int LineNumber { get; }
 
     #region Comparison Helpers
 
@@ -110,44 +122,38 @@ namespace GBricks.Collections
     #endregion Comparison Helpers
 
     private Expression ApplyInterception(ComparerBuilderInterception interception, string methodName,
-      Expression first, Expression second, Func<Expression, Expression, Expression, Expression> make,
-      bool comparison) {
-      var comparer = !comparison ? EqualityComparer : Comparer;
-      var comparerType = !comparison ? typeof(IEqualityComparer<T>) : typeof(IComparer<T>);
-      return ApplyInterception(interception, methodName, Expression, first, second, comparer, comparerType, SourceInfo, make);
-    }
-
-    private static Expression ApplyInterception(ComparerBuilderInterception interception, string methodName, Expression expression,
-      Expression first, Expression second, Expression comparer, Type comparerType, SourceInfo sourceInfo,
-      Func<Expression, Expression, Expression, Expression> make) {
+      Expression first, Expression second, Func<Expression, Expression, Expression, Expression> make, bool comparison) {
       if(interception == null) {
         throw new ArgumentNullException(nameof(interception));
-      } else if(expression == null) {
-        throw new ArgumentNullException(nameof(expression));
       } else if(first == null) {
         throw new ArgumentNullException(nameof(first));
       } else if(make == null) {
         throw new ArgumentNullException(nameof(make));
       }//if
 
-      // return {interception}.{methodName}<{valueType}>(expression, {expression}, {x}[, {y}], {comparer});
+      // return {interception}.{methodName}<{valueType}>({expression}, {x}[, {y}], args);
 
       var instance = Constant(interception);
-      var expressionArg = Constant(expression, typeof(Expression));
 
+      var useSecond = second != null;
       var firstArg = Parameter(first.Type);
       var assignFirst = Assign(firstArg, first);
-      var useSecond = second != null;
       var secondArg = useSecond ? Parameter(second.Type) : null;
       var assignSecond = useSecond ? Assign(secondArg, second) : null;
       var variables = useSecond ? new[] { firstArg, secondArg, } : new[] { firstArg, };
 
+      var comparer = !comparison ? EqualityComparer : Comparer;
       var valueArg = make(firstArg, secondArg, comparer);
-      var comparerArg = comparer ?? Constant(null, comparerType);
-      var sourceInfoArg = Constant(sourceInfo);
-      var arguments = secondArg != null
-        ? new[] { expressionArg, valueArg, firstArg, secondArg, comparerArg, sourceInfoArg, }
-        : new[] { expressionArg, valueArg, firstArg, comparerArg, sourceInfoArg, };
+
+      var expressionArg = Constant(Expression, typeof(Expression));
+      var equalityComparerArg = EqualityComparer ?? NullEqualityComparer;
+      var comparerArg = Comparer ?? NullComparer;
+      var filePathArgs = Constant(FilePath);
+      var lineNumberArgs = Constant(LineNumber);
+      var args = New(InterceptionArgsCtor, expressionArg, equalityComparerArg, comparerArg, filePathArgs, lineNumberArgs);
+      var arguments = useSecond
+        ? new[] { valueArg, firstArg, secondArg, args, }
+        : new[] { valueArg, firstArg, args, };
       var call = Call(instance, methodName, InterceptTypeArguments, arguments);
       var expressions = useSecond
         ? new Expression[] { assignFirst, assignSecond, call, }

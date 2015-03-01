@@ -59,21 +59,19 @@ namespace GBricks.Collections
       return new ComparerBuilder<T>(expressions, Interception);
     }
 
-    private ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, Expression equalityComparer, Expression comparisonComparer, SourceInfo sourceInfo) {
-      var expr = new ComparerExpression<TProperty>(expression, equalityComparer, comparisonComparer, sourceInfo);
+    private ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, Expression equalityComparer, Expression comparisonComparer, string filePath, int lineNumber) {
+      var expr = new ComparerExpression<TProperty>(expression, equalityComparer, comparisonComparer, filePath, lineNumber);
       return Add(expr);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, [CallerFilePath] string filePath = null, [CallerLineNumber] int lineNumber = 0) {
-      var sourceInfo = new SourceInfo(filePath, lineNumber);
-      return Add(expression, default(Expression), default(Expression), sourceInfo);
+      return Add(expression, default(Expression), default(Expression), filePath, lineNumber);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, IEqualityComparer<TProperty> equalityComparer, IComparer<TProperty> comparisonComparer, [CallerFilePath] string filePath = null, [CallerLineNumber] int lineNumber = 0) {
       var equality = Constant(equalityComparer ?? EqualityComparer<TProperty>.Default);
       var comparison = Constant(comparisonComparer ?? Comparer<TProperty>.Default);
-      var sourceInfo = new SourceInfo(filePath, lineNumber);
-      return Add(expression, equality, comparison, sourceInfo);
+      return Add(expression, equality, comparison, filePath, lineNumber);
     }
 
     public ComparerBuilder<T> Add<TProperty, TComparer>(Expression<Func<T, TProperty>> expression, TComparer comparer, [CallerFilePath] string filePath = null, [CallerLineNumber] int lineNumber = 0) where TComparer : IEqualityComparer<TProperty>, IComparer<TProperty> {
@@ -83,7 +81,7 @@ namespace GBricks.Collections
 
       var constant = Constant(comparer);
       var sourceInfo = new SourceInfo(filePath, lineNumber);
-      return Add(expression, constant, constant, sourceInfo);
+      return Add(expression, constant, constant, filePath, lineNumber);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
