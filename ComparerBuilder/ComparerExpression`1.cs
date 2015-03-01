@@ -10,22 +10,15 @@ namespace GBricks.Collections
   using static Expression;
   using static ReplaceVisitor;
 
-  internal sealed class ComparerExpression<T> : IComparerExpression
+  internal sealed class ComparerExpression<T> : IComparerExpression, IComparerBuilderInterceptionArgs<T>
   {
     private static readonly MethodInfo GetHashCodeMethodInfo = typeof(T).GetMethod(nameof(GetHashCode), BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
     private static readonly Type[] InterceptTypeArguments = { typeof(T), };
-    private static readonly ConstructorInfo InterceptionArgsCtor = typeof(ComparerBuilderInterceptionArgs<T>).GetConstructor(new[] {
-      typeof(Expression), // expression
-      typeof(IEqualityComparer<T>), // equalityComparer
-      typeof(IComparer<T>), // comparer
-      typeof(string), // filePath
-      typeof(int), // lineNumber
-    });
 
     private static readonly ConstantExpression NullEqualityComparer = Constant(null, typeof(IEqualityComparer<T>));
     private static readonly ConstantExpression NullComparer = Constant(null, typeof(IComparer<T>));
 
-    public ComparerExpression(LambdaExpression expression, Expression equality, Expression comparison, string filePath, int lineNumber) {
+    public ComparerExpression(LambdaExpression expression, IEqualityComparer<T> equality, IComparer<T> comparison, string filePath, int lineNumber) {
       if(expression == null) {
         throw new ArgumentNullException(nameof(expression));
       }//if
@@ -35,13 +28,23 @@ namespace GBricks.Collections
       Comparer = comparison;
       FilePath = filePath ?? String.Empty;
       LineNumber = lineNumber;
+
+      EqualityComparerExpression = EqualityComparer != null ? Constant(EqualityComparer) : null;
+      ComparisonComparerExpression = Comparer != null ? Constant(Comparer) : null;
     }
 
+    private Expression EqualityComparerExpression { get; }
+    private Expression ComparisonComparerExpression { get; }
+
+    #region IComparerBuilderInterceptionArgs<T> Members
+
     public LambdaExpression Expression { get; }
-    public Expression EqualityComparer { get; }
-    public Expression Comparer { get; }
+    public IEqualityComparer<T> EqualityComparer { get; }
+    public IComparer<T> Comparer { get; }
     public string FilePath { get; }
     public int LineNumber { get; }
+
+    #endregion IComparerBuilderInterceptionArgs<T> Members
 
     #region Comparison Helpers
 
@@ -121,7 +124,7 @@ namespace GBricks.Collections
 
     #endregion Comparison Helpers
 
-    private Expression ApplyInterception(ComparerBuilderInterception interception, string methodName,
+    private Expression ApplyInterception(IComparerBuilderInterception interception, string methodName,
       Expression first, Expression second, Func<Expression, Expression, Expression, Expression> make, bool comparison) {
       if(interception == null) {
         throw new ArgumentNullException(nameof(interception));
@@ -131,7 +134,7 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(make));
       }//if
 
-      // return {interception}.{methodName}<{valueType}>({expression}, {x}[, {y}], args);
+      // return {interception}.{methodName}<{valueType}>({expression}, {x}[, {y}], this);
 
       var instance = Constant(interception);
 
@@ -142,15 +145,9 @@ namespace GBricks.Collections
       var assignSecond = useSecond ? Assign(secondArg, second) : null;
       var variables = useSecond ? new[] { firstArg, secondArg, } : new[] { firstArg, };
 
-      var comparer = !comparison ? EqualityComparer : Comparer;
+      var comparer = !comparison ? EqualityComparerExpression : ComparisonComparerExpression;
       var valueArg = make(firstArg, secondArg, comparer);
-
-      var expressionArg = Constant(Expression, typeof(Expression));
-      var equalityComparerArg = EqualityComparer ?? NullEqualityComparer;
-      var comparerArg = Comparer ?? NullComparer;
-      var filePathArgs = Constant(FilePath);
-      var lineNumberArgs = Constant(LineNumber);
-      var args = New(InterceptionArgsCtor, expressionArg, equalityComparerArg, comparerArg, filePathArgs, lineNumberArgs);
+      var args = Constant(this);
       var arguments = useSecond
         ? new[] { valueArg, firstArg, secondArg, args, }
         : new[] { valueArg, firstArg, args, };
@@ -158,6 +155,7 @@ namespace GBricks.Collections
       var expressions = useSecond
         ? new Expression[] { assignFirst, assignSecond, call, }
         : new Expression[] { assignFirst, call, };
+
       return Block(valueArg.Type, variables, expressions);
     }
 
@@ -165,36 +163,36 @@ namespace GBricks.Collections
 
     #region IComparerExpression Members
 
-    public Expression AsEquals(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+    public Expression AsEquals(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception) {
       var first = ReplaceParameters(Expression, x);
       var second = ReplaceParameters(Expression, y);
       if(interception == null) {
-        return MakeEquals(first, second, EqualityComparer);
+        return MakeEquals(first, second, EqualityComparerExpression);
       } else {
-        const string MethodName = nameof(ComparerBuilderInterception.InterceptEquals);
+        const string MethodName = nameof(IComparerBuilderInterception.InterceptEquals);
         var comparerType = typeof(IEqualityComparer<T>);
         return ApplyInterception(interception, MethodName, first, second, (a, b, c) => MakeEquals(a, b, c), comparison: false);
       }//if
     }
 
-    public Expression AsGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
+    public Expression AsGetHashCode(ParameterExpression obj, IComparerBuilderInterception interception) {
       var value = ReplaceParameters(Expression, obj);
       if(interception == null) {
-        return MakeGetHashCode(value, EqualityComparer);
+        return MakeGetHashCode(value, EqualityComparerExpression);
       } else {
-        const string MethodName = nameof(ComparerBuilderInterception.InterceptGetHashCode);
+        const string MethodName = nameof(IComparerBuilderInterception.InterceptGetHashCode);
         var comparerType = typeof(IEqualityComparer<T>);
         return ApplyInterception(interception, MethodName, value, null, (a, b, c) => MakeGetHashCode(a, c), comparison: false);
       }//if
     }
 
-    public Expression AsCompare(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+    public Expression AsCompare(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception) {
       var first = ReplaceParameters(Expression, x);
       var second = ReplaceParameters(Expression, y);
       if(interception == null) {
-        return MakeCompare(first, second, Comparer);
+        return MakeCompare(first, second, ComparisonComparerExpression);
       } else {
-        const string MethodName = nameof(ComparerBuilderInterception.InterceptCompare);
+        const string MethodName = nameof(IComparerBuilderInterception.InterceptCompare);
         var comparerType = typeof(IComparer<T>);
         return ApplyInterception(interception, MethodName, first, second, (a, b, c) => MakeCompare(a, b, c), comparison: true);
       }//if

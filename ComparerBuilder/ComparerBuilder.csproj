@@ -42,17 +42,16 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ComparerBuilder.cs" />
-    <Compile Include="ComparerBuilderInterceptionArgs`1.cs" />
+    <Compile Include="IComparerBuilderInterceptionArgs`1.cs" />
     <Compile Include="ComparerBuilder`1.cs" />
     <Compile Include="ComparerExpression`1.cs" />
     <Compile Include="Comparers.cs" />
     <Compile Include="DefaultInterception.cs" />
     <Compile Include="IComparerExpression.cs" />
-    <Compile Include="ComparerBuilderInterception.cs" />
+    <Compile Include="IComparerBuilderInterception.cs" />
     <Compile Include="NestedComparerExpression`1.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReplaceVisitor.cs" />
-    <Compile Include="SourceInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

@@ -36,13 +36,13 @@ namespace GBricks.Collections
 
     public ComparerBuilder() { }
 
-    private ComparerBuilder(ImmutableArray<IComparerExpression> expressions, ComparerBuilderInterception interception) {
+    private ComparerBuilder(ImmutableArray<IComparerExpression> expressions, IComparerBuilderInterception interception) {
       Expressions = expressions;
       Interception = interception;
     }
 
     private ImmutableArray<IComparerExpression> Expressions { get; }
-    public ComparerBuilderInterception Interception { get; }
+    public IComparerBuilderInterception Interception { get; }
     public bool IsEmpty => Expressions.IsDefaultOrEmpty;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
@@ -59,19 +59,15 @@ namespace GBricks.Collections
       return new ComparerBuilder<T>(expressions, Interception);
     }
 
-    private ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, Expression equalityComparer, Expression comparisonComparer, string filePath, int lineNumber) {
-      var expr = new ComparerExpression<TProperty>(expression, equalityComparer, comparisonComparer, filePath, lineNumber);
-      return Add(expr);
-    }
-
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, [CallerFilePath] string filePath = null, [CallerLineNumber] int lineNumber = 0) {
-      return Add(expression, default(Expression), default(Expression), filePath, lineNumber);
+      return Add(expression, null, null, filePath, lineNumber);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, IEqualityComparer<TProperty> equalityComparer, IComparer<TProperty> comparisonComparer, [CallerFilePath] string filePath = null, [CallerLineNumber] int lineNumber = 0) {
-      var equality = Constant(equalityComparer ?? EqualityComparer<TProperty>.Default);
-      var comparison = Constant(comparisonComparer ?? Comparer<TProperty>.Default);
-      return Add(expression, equality, comparison, filePath, lineNumber);
+      var equality = equalityComparer ?? EqualityComparer<TProperty>.Default;
+      var comparison = comparisonComparer ?? Comparer<TProperty>.Default;
+      var value = new ComparerExpression<TProperty>(expression, equalityComparer, comparisonComparer, filePath, lineNumber);
+      return Add(value);
     }
 
     public ComparerBuilder<T> Add<TProperty, TComparer>(Expression<Func<T, TProperty>> expression, TComparer comparer, [CallerFilePath] string filePath = null, [CallerLineNumber] int lineNumber = 0) where TComparer : IEqualityComparer<TProperty>, IComparer<TProperty> {
@@ -79,9 +75,7 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(comparer));
       }//if
 
-      var constant = Constant(comparer);
-      var sourceInfo = new SourceInfo(filePath, lineNumber);
-      return Add(expression, constant, constant, filePath, lineNumber);
+      return Add(expression, comparer, comparer, filePath, lineNumber);
     }
 
     public ComparerBuilder<T> Add<TProperty>(Expression<Func<T, TProperty>> expression, ComparerBuilder<TProperty> builder) {
@@ -106,7 +100,7 @@ namespace GBricks.Collections
       return new ComparerBuilder<TDerived>(Expressions, Interception);
     }
 
-    public ComparerBuilder<T> WithInterception(ComparerBuilderInterception value) {
+    public ComparerBuilder<T> WithInterception(IComparerBuilderInterception value) {
       if(value != Interception) {
         return new ComparerBuilder<T>(Expressions, value);
       } else {
@@ -118,7 +112,7 @@ namespace GBricks.Collections
 
     #region Build Methods
 
-    internal Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+    internal Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception = null) {
       var expression = Expressions.Select(item => item.AsEquals(x, y, interception)).Aggregate((left, right) => AndAlso(left, right));
       var body = IsValueType
         ? expression
@@ -127,7 +121,7 @@ namespace GBricks.Collections
       return Lambda<Func<T, T, bool>>(body, x, y);
     }
 
-    internal Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
+    internal Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj, IComparerBuilderInterception interception = null) {
       var list = Expressions.Select(item => item.AsGetHashCode(obj, interception)).ToList();
       var expression = list.Skip(1).Select((item, index) => Tuple.Create(item, index + 1))
         .Aggregate(list.First(), (acc, item) => ExclusiveOr(acc, Call(RotateRightDelegate.Method, item.Item1, Constant(item.Item2))));
@@ -138,7 +132,7 @@ namespace GBricks.Collections
       return Lambda<Func<T, int>>(body, obj);
     }
 
-    internal Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+    internal Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception = null) {
       var reverse = Expressions.Select(item => item.AsCompare(x, y, interception)).Reverse().ToList();
       Expression seed = Return(Return, reverse.First());
       var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => IfThenElse(NotEqual(Assign(Compare, value), Zero), ReturnCompare, acc));
@@ -169,7 +163,7 @@ namespace GBricks.Collections
       }//if
     }
 
-    private EqualityComparer<T> CreateEqualityComparer(ComparerBuilderInterception interception = null) {
+    private EqualityComparer<T> CreateEqualityComparer(IComparerBuilderInterception interception = null) {
       ThrowIfEmpty();
       var equals = BuildEquals(X, Y, interception);
       var hashCode = BuildGetHashCode(Obj, interception);
@@ -180,11 +174,11 @@ namespace GBricks.Collections
       return CreateEqualityComparer(interception: null);
     }
 
-    public EqualityComparer<T> CreateEqualityComparerChecked(ComparerBuilderInterception interception = null) {
+    public EqualityComparer<T> CreateEqualityComparerChecked(IComparerBuilderInterception interception = null) {
       return CreateEqualityComparer(interception ?? Interception ?? DefaultInterception.Instance);
     }
 
-    private Comparer<T> CreateComparer(ComparerBuilderInterception interception = null) {
+    private Comparer<T> CreateComparer(IComparerBuilderInterception interception = null) {
       ThrowIfEmpty();
       var compare = BuildCompare(X, Y, interception);
       return Comparers.Create(compare.Compile());
@@ -194,7 +188,7 @@ namespace GBricks.Collections
       return CreateComparer(interception: null);
     }
 
-    public Comparer<T> CreateComparerChecked(ComparerBuilderInterception interception = null) {
+    public Comparer<T> CreateComparerChecked(IComparerBuilderInterception interception = null) {
       return CreateComparer(interception ?? Interception ?? DefaultInterception.Instance);
     }
 

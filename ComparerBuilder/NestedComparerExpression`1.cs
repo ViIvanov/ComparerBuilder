@@ -21,27 +21,27 @@ namespace GBricks.Collections
     public LambdaExpression Expression { get; }
     public ComparerBuilder<T> Builder { get; }
   
-    private ComparerBuilderInterception GetInterception(ComparerBuilderInterception value)
+    private IComparerBuilderInterception GetInterception(IComparerBuilderInterception value)
       => value == DefaultInterception.Instance && Builder.Interception != null ? Builder.Interception : value;
   
     public override string ToString() => Expression.ToString();
   
     #region IComparerExpression Members
   
-    public Expression AsEquals(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+    public Expression AsEquals(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception = null) {
       var expression = Builder.BuildEquals(ComparerBuilder<T>.X, ComparerBuilder<T>.Y, GetInterception(interception));
       var first = ReplaceParameters(Expression, x);
       var second = ReplaceParameters(Expression, y);
       return ReplaceParameters(expression, first, second);
     }
   
-    public Expression AsGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
+    public Expression AsGetHashCode(ParameterExpression obj, IComparerBuilderInterception interception = null) {
       var expression = Builder.BuildGetHashCode(ComparerBuilder<T>.Obj, GetInterception(interception));
       var value = ReplaceParameters(Expression, obj);
       return ReplaceParameters(expression, value);
     }
   
-    public Expression AsCompare(ParameterExpression x, ParameterExpression y, ComparerBuilderInterception interception = null) {
+    public Expression AsCompare(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception = null) {
       var expression = Builder.BuildCompare(ComparerBuilder<T>.X, ComparerBuilder<T>.Y, GetInterception(interception));
       var first = ReplaceParameters(Expression, x);
       var second = ReplaceParameters(Expression, y);
