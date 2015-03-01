@@ -25,8 +25,8 @@ namespace ComparerBuilder.Tests
         .ConvertTo<Data>()
         .Add(value => value.SubData1, builderSubData);
 
-      var equalityComparer = builderData.CreateEqualityComparer();
-      var comparer = builderData.CreateComparer();
+      var equalityComparer = builderData.CreateEqualityComparerChecked();
+      var comparer = builderData.CreateComparerChecked();
 
       var data1 = new Data(2, DateTime.Now, new SubData("a"));
       var data2 = new Data(4, DateTime.Now, new SubData("A"));
