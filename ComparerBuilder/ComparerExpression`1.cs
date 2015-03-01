@@ -10,11 +10,10 @@ namespace GBricks.Collections
   using static Expression;
   using static ReplaceVisitor;
 
-  internal sealed class ComparerExpression<TProperty> : IComparerExpression
+  internal sealed class ComparerExpression<T> : IComparerExpression
   {
-    private static readonly Func<object, object, bool> ObjectEqualsDelegate = Equals;
-    private static readonly Func<int> GetHashCodeDelegate = new object().GetHashCode;
-    private static readonly Type[] InterceptTypeArguments = { typeof(TProperty), };
+    private static readonly MethodInfo GetHashCodeMethodInfo = typeof(T).GetMethod(nameof(GetHashCode), BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+    private static readonly Type[] InterceptTypeArguments = { typeof(T), };
 
     public ComparerExpression(LambdaExpression expression, Expression equality = null, Expression comparison = null, SourceInfo sourceInfo = default(SourceInfo)) {
       if(expression == null) {
@@ -43,14 +42,14 @@ namespace GBricks.Collections
 
       if(comparer != null) {
         // comparer.Equals(x, y);
-        return CallComparerMethod(comparer, nameof(IEqualityComparer<int>.Equals), x, y);
+        return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.Equals), x, y);
       } else {
         if(x.Type.IsValueType && y.Type.IsValueType) {
           // x == y;
           return Equal(x, y);
         } else {
           // Object.Equals(x, y);
-          return Call(ObjectEqualsDelegate.Method, ToObject(x), ToObject(y));
+          return Call(ObjectEqualsMethodInfo, ToObject(x), ToObject(y));
         }//if
       }//if
     }
@@ -62,9 +61,10 @@ namespace GBricks.Collections
 
       if(comparer != null) {
         // comparer.GetHashCode(obj);
-        return CallComparerMethod(comparer, nameof(IEqualityComparer<int>.GetHashCode), obj);
+        return CallComparerMethod(comparer, nameof(IEqualityComparer<T>.GetHashCode), obj);
       } else {
-        var call = Call(obj, GetHashCodeDelegate.Method);
+        var method = obj.Type.IsValueType ? GetHashCodeMethodInfo : ObjectGetHashCodeMethodInfo;
+        var call = Call(obj, method);
         if(obj.Type.IsValueType) {
           // obj.GetHashCode();
           return call;
@@ -84,7 +84,7 @@ namespace GBricks.Collections
 
       if(comparer != null) {
         // comparer.Compare(x, y);
-        return CallComparerMethod(comparer, nameof(IComparer<int>.Compare), x, y);
+        return CallComparerMethod(comparer, nameof(IComparer<T>.Compare), x, y);
       } else {
         // (x < y) ? -1 : (y < x ? 1 : 0);
         return Condition(LessThan(x, y), MinusOne, Condition(LessThan(y, x), One, Zero));
@@ -113,7 +113,7 @@ namespace GBricks.Collections
       Expression first, Expression second, Func<Expression, Expression, Expression, Expression> make,
       bool comparison) {
       var comparer = !comparison ? EqualityComparer : Comparer;
-      var comparerType = comparison ? typeof(IEqualityComparer<TProperty>) : typeof(IComparer<TProperty>);
+      var comparerType = !comparison ? typeof(IEqualityComparer<T>) : typeof(IComparer<T>);
       return ApplyInterception(interception, methodName, Expression, first, second, comparer, comparerType, SourceInfo, make);
     }
 
@@ -152,7 +152,7 @@ namespace GBricks.Collections
       var expressions = useSecond
         ? new Expression[] { assignFirst, assignSecond, call, }
         : new Expression[] { assignFirst, call, };
-      return Block(expression.Type, variables, expressions);
+      return Block(valueArg.Type, variables, expressions);
     }
 
     public override string ToString() => Expression.ToString();
@@ -163,22 +163,22 @@ namespace GBricks.Collections
       var first = ReplaceParameters(Expression, x);
       var second = ReplaceParameters(Expression, y);
       if(interception == null) {
-        return MakeEquals(x, y, EqualityComparer);
+        return MakeEquals(first, second, EqualityComparer);
       } else {
         const string MethodName = nameof(ComparerBuilderInterception.InterceptEquals);
-        var comparerType = typeof(IEqualityComparer<TProperty>);
-        return ApplyInterception(interception, MethodName, x, y, (a, b, c) => MakeEquals(a, b, c), comparison: false);
+        var comparerType = typeof(IEqualityComparer<T>);
+        return ApplyInterception(interception, MethodName, first, second, (a, b, c) => MakeEquals(a, b, c), comparison: false);
       }//if
     }
 
     public Expression AsGetHashCode(ParameterExpression obj, ComparerBuilderInterception interception = null) {
       var value = ReplaceParameters(Expression, obj);
       if(interception == null) {
-        return MakeGetHashCode(obj, EqualityComparer);
+        return MakeGetHashCode(value, EqualityComparer);
       } else {
         const string MethodName = nameof(ComparerBuilderInterception.InterceptGetHashCode);
-        var comparerType = typeof(IEqualityComparer<TProperty>);
-        return ApplyInterception(interception, MethodName, obj, null, (a, b, c) => MakeGetHashCode(a, c), comparison: false);
+        var comparerType = typeof(IEqualityComparer<T>);
+        return ApplyInterception(interception, MethodName, value, null, (a, b, c) => MakeGetHashCode(a, c), comparison: false);
       }//if
     }
 
@@ -186,11 +186,11 @@ namespace GBricks.Collections
       var first = ReplaceParameters(Expression, x);
       var second = ReplaceParameters(Expression, y);
       if(interception == null) {
-        return MakeCompare(x, y, Comparer);
+        return MakeCompare(first, second, Comparer);
       } else {
         const string MethodName = nameof(ComparerBuilderInterception.InterceptCompare);
-        var comparerType = typeof(IComparer<TProperty>);
-        return ApplyInterception(interception, MethodName, x, y, (a, b, c) => MakeCompare(a, b, c), comparison: true);
+        var comparerType = typeof(IComparer<T>);
+        return ApplyInterception(interception, MethodName, first, second, (a, b, c) => MakeCompare(a, b, c), comparison: true);
       }//if
     }
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace GBricks.Collections
 {
@@ -13,6 +14,9 @@ namespace GBricks.Collections
 
     public static ConstantExpression One { get; } = Constant(1);
     public static ConstantExpression MinusOne { get; } = Constant(-1);
+
+    public static MethodInfo ObjectEqualsMethodInfo { get; } = new Func<object, object, bool>(Equals).Method;
+    public static MethodInfo ObjectGetHashCodeMethodInfo { get; } = new Func<int>(new object().GetHashCode).Method;
 
     public static BinaryExpression IsNull(Expression value) => ReferenceEqual(value, Null);
     public static BinaryExpression IsNotNull(Expression value) => ReferenceNotEqual(value, Null);

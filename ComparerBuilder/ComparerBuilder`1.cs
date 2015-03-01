@@ -1,18 +1,15 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace GBricks.Collections
 {
   using static ComparerBuilder;
   using static Expression;
-  using static ReplaceVisitor;
 
   [DebuggerDisplay("{DebuggerDisplay}")]
   public sealed class ComparerBuilder<T>
@@ -33,7 +30,6 @@ namespace GBricks.Collections
     private static readonly GotoExpression ReturnCompare = Return(Return, Compare);
 
     private static readonly Func<int, int, int> RotateRightDelegate = Comparers.RotateRight;
-
     private static readonly bool IsValueType = typeof(T).IsValueType;
 
     #endregion Cached Expression and Reflection objects
