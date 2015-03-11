@@ -9,12 +9,12 @@ namespace GBricks.Collections
 
     public static IComparerBuilderInterception Instance { get; } = new DefaultInterception();
 
-    private void Intercept<TValue, T>(TValue value, T first, T second, IComparerBuilderInterceptionArgs<T> args, bool hasSecond, [CallerMemberName] string memberName = null) {
+    private void Intercept<TValue, T>(TValue value, T first, T second, ComparerBuilderInterceptionArgs<T> args, bool hasSecond, [CallerMemberName] string memberName = null) {
       var parameters = hasSecond ? $"{first}, {second}" : $"{first}";
-      Debug.Print($"{args.FilePath} ({args.LineNumber}) : {memberName}({parameters}) returned {value} for {{{args.Expression}}}");
+      Debug.Print($"{args.FilePath} ({args.LineNumber}) : {memberName}({parameters}) returned {value} for {{{args.Expression}}} on type \"{args.ComparedType}\"");
     }
 
-    public bool InterceptEquals<T>(bool value, T x, T y, IComparerBuilderInterceptionArgs<T> args) {
+    public bool InterceptEquals<T>(bool value, T x, T y, ComparerBuilderInterceptionArgs<T> args) {
       if(!value) {
         Intercept(value, x, y, args, hasSecond: true);
       }//if
@@ -22,7 +22,7 @@ namespace GBricks.Collections
       return value;
     }
 
-    public int InterceptGetHashCode<T>(int value, T obj, IComparerBuilderInterceptionArgs<T> args) {
+    public int InterceptGetHashCode<T>(int value, T obj, ComparerBuilderInterceptionArgs<T> args) {
       if(value == 0) {
         Intercept(value, obj, default(T), args, hasSecond: false);
       }//if
@@ -30,7 +30,7 @@ namespace GBricks.Collections
       return value;
     }
 
-    public int InterceptCompare<T>(int value, T x, T y, IComparerBuilderInterceptionArgs<T> args) {
+    public int InterceptCompare<T>(int value, T x, T y, ComparerBuilderInterceptionArgs<T> args) {
       if(value != 0) {
         Intercept(value, x, y, args, hasSecond: true);
       }//if

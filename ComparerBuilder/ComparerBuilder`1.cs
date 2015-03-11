@@ -30,7 +30,8 @@ namespace GBricks.Collections
     private static readonly GotoExpression ReturnCompare = Return(Return, Compare);
 
     private static readonly Func<int, int, int> RotateRightDelegate = Comparers.RotateRight;
-    private static readonly bool IsValueType = typeof(T).IsValueType;
+    private static readonly Type ComparedType = typeof(T);
+    private static readonly bool IsValueType = ComparedType.IsValueType;
 
     #endregion Cached Expression and Reflection objects
 
@@ -112,8 +113,8 @@ namespace GBricks.Collections
 
     #region Build Methods
 
-    internal Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception = null) {
-      var expression = Expressions.Select(item => item.AsEquals(x, y, interception)).Aggregate((left, right) => AndAlso(left, right));
+    internal Expression<Func<T, T, bool>> BuildEquals(ParameterExpression x, ParameterExpression y, Type comparedType, IComparerBuilderInterception interception = null) {
+      var expression = Expressions.Select(item => item.AsEquals(x, y, comparedType, interception)).Aggregate((left, right) => AndAlso(left, right));
       var body = IsValueType
         ? expression
         // (object)x == (object)y || ((object)x != null && (object)y != null && expression);
@@ -121,8 +122,8 @@ namespace GBricks.Collections
       return Lambda<Func<T, T, bool>>(body, x, y);
     }
 
-    internal Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj, IComparerBuilderInterception interception = null) {
-      var list = Expressions.Select(item => item.AsGetHashCode(obj, interception)).ToList();
+    internal Expression<Func<T, int>> BuildGetHashCode(ParameterExpression obj, Type comparedType, IComparerBuilderInterception interception = null) {
+      var list = Expressions.Select(item => item.AsGetHashCode(obj, comparedType, interception)).ToList();
       var expression = list.Skip(1).Select((item, index) => Tuple.Create(item, index + 1))
         .Aggregate(list.First(), (acc, item) => ExclusiveOr(acc, Call(RotateRightDelegate.Method, item.Item1, Constant(item.Item2))));
       var body = IsValueType
@@ -132,8 +133,8 @@ namespace GBricks.Collections
       return Lambda<Func<T, int>>(body, obj);
     }
 
-    internal Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, IComparerBuilderInterception interception = null) {
-      var reverse = Expressions.Select(item => item.AsCompare(x, y, interception)).Reverse().ToList();
+    internal Expression<Func<T, T, int>> BuildCompare(ParameterExpression x, ParameterExpression y, Type comparedType, IComparerBuilderInterception interception = null) {
+      var reverse = Expressions.Select(item => item.AsCompare(x, y, comparedType, interception)).Reverse().ToList();
       Expression seed = Return(Return, reverse.First());
       var expression = reverse.Skip(1).Aggregate(seed, (acc, value) => IfThenElse(NotEqual(Assign(Compare, value), Zero), ReturnCompare, acc));
       var body = IsValueType
@@ -165,8 +166,8 @@ namespace GBricks.Collections
 
     private EqualityComparer<T> CreateEqualityComparer(IComparerBuilderInterception interception = null) {
       ThrowIfEmpty();
-      var equals = BuildEquals(X, Y, interception);
-      var hashCode = BuildGetHashCode(Obj, interception);
+      var equals = BuildEquals(X, Y, ComparedType, interception);
+      var hashCode = BuildGetHashCode(Obj, ComparedType, interception);
       return Comparers.Create(equals.Compile(), hashCode.Compile());
     }
 
@@ -180,7 +181,7 @@ namespace GBricks.Collections
 
     private Comparer<T> CreateComparer(IComparerBuilderInterception interception = null) {
       ThrowIfEmpty();
-      var compare = BuildCompare(X, Y, interception);
+      var compare = BuildCompare(X, Y, ComparedType, interception);
       return Comparers.Create(compare.Compile());
     }
 
