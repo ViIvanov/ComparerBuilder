@@ -175,7 +175,7 @@ namespace GBricks.Collections
       return CreateEqualityComparer(interception: null);
     }
 
-    public EqualityComparer<T> CreateEqualityComparerChecked(IComparerBuilderInterception interception = null) {
+    public EqualityComparer<T> CreateEqualityComparerIntercepted(IComparerBuilderInterception interception = null) {
       return CreateEqualityComparer(interception ?? Interception ?? DefaultInterception.Instance);
     }
 
@@ -189,7 +189,7 @@ namespace GBricks.Collections
       return CreateComparer(interception: null);
     }
 
-    public Comparer<T> CreateComparerChecked(IComparerBuilderInterception interception = null) {
+    public Comparer<T> CreateComparerIntercepted(IComparerBuilderInterception interception = null) {
       return CreateComparer(interception ?? Interception ?? DefaultInterception.Instance);
     }
 
