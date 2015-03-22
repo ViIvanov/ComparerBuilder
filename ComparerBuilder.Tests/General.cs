@@ -50,11 +50,13 @@ namespace ComparerBuilder.Tests
         .Add(value => value.Test2)
         .CreateComparerIntercepted();
       var items = new[] {
+        new BaseData(test2: null),
         new BaseData(test2: new DateTime(2015, 01, 01)),
         new BaseData(test2: null),
         new BaseData(test2: new DateTime(2015, 02, 01)),
         new BaseData(test2: null),
         new BaseData(test2: new DateTime(2015, 03, 01)),
+        new BaseData(test2: null),
       };
       Array.Sort(items, comparer);
 
@@ -62,7 +64,8 @@ namespace ComparerBuilder.Tests
       var previous = default(BaseData);
       foreach(var item in items) {
         if(previous != null) {
-          Assert.IsTrue(previous.Test2 == null || previous.Test2 <= item.Test2, $"previous.Test2 == null || previous.Test2 [{previous.Test2}] <= item.Test2 [{item.Test2}]");
+          Assert.IsTrue(previous.Test2 == null || previous.Test2 <= item.Test2,
+            $"previous.Test2 == null || previous.Test2 [{previous.Test2}] <= item.Test2 [{item.Test2}]");
         }//if
         previous = item;
       }//for

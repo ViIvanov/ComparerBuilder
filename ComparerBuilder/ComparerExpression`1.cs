@@ -98,7 +98,23 @@ namespace GBricks.Collections
         return CallComparerMethod(comparer, nameof(IComparer<T>.Compare), x, y);
       } else {
         // (x < y) ? -1 : (y < x ? 1 : 0);
-        return Condition(LessThan(x, y), MinusOne, Condition(LessThan(y, x), One, Zero));
+        var compare = Condition(LessThan(x, y), MinusOne, Condition(LessThan(y, x), One, Zero));
+        var code = (x.IsTypeNullable() ? 2 : 0) + (y.IsTypeNullable() ? 1 : 0);
+        switch(code) {
+        case 0: // "x" and "y" both are not nullable
+          return compare;
+        case 1: // "x" is not nullable and "y" is nullable
+          // (object)y == null ? 1 : {compare};
+          return Condition(IsNull(y), One, compare);
+        case 2: // "x" is nullable and "y" is not nullable
+          // (object)x == null ? -1 : {compare};
+          return Condition(IsNull(x), MinusOne, compare);
+        case 3: // "x" and "y" both are nullable
+          // (object)x == null ? (y == null ? 0 : -1) : ((object)y == null ? 1 : {compare});
+          return Condition(IsNull(x), Condition(IsNull(y), Zero, MinusOne), Condition(IsNull(y), One, compare));
+        default:
+          throw new InvalidOperationException($"Invalid code: x.Type = {x.Type}, y.Type = {y.Type}, code = {code}.");
+        }//switch
       }//if
     }
 
