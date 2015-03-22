@@ -5,7 +5,7 @@ Class for building equality comparers and sort comparers.
 
 You can find reasons for making `ComparerBuilder<>` in this old post on [RSDN](http://rsdn.ru/forum/src/3914421.1) (in Russian).
 
-Now `ComparerBuilder<>` written on C# 6.0. You can compose a comparer builder from other comparer builders. Also, it supports "checked" comparers, that throws an exception when `IEqualityComparer<>::Equals` returns `false` or `IComparer<>::Comparer` returns not 0. "Checked" comparers are helpful in a debugging scenarios.
+Now `ComparerBuilder<>` written on C# 6.0. You can compose a comparer builder from other comparer builders. Also, it supports "intercepted" comparers, that allows to intercept compare methods and, for example, print to a `Debug` when `IEqualityComparer<>::Equals` returns `false` or `IComparer<>::Compare` returns not 0. "Intercepted" comparers are helpful in a debugging scenarios.
 
 ```cs
 static class Example
@@ -14,16 +14,19 @@ static class Example
     var builderSubData = new ComparerBuilder<SubData>()
       .Add(value => value.Test ?? String.Empty, StringComparer.OrdinalIgnoreCase);
 
-    var builderBaseData = new ComparerBuilder<BaseData>()
-      .Add(value => value.Test1 % 2)
+    var builderBaseDataByTest1 = new ComparerBuilder<BaseData>()
+      .Add(value => value.Test1 % 2);
+
+    var builderBaseDataByTest2 = new ComparerBuilder<BaseData>()
       .Add(value => value.Test2 != null ? value.Test2.Value.Date : default(DateTime));
 
-    var builderData = builderBaseData
+    var builderData = builderBaseDataByTest1
+      .Add(builderBaseDataByTest2)
       .ConvertTo<Data>()
       .Add(value => value.SubData1, builderSubData);
 
-    var equalityComparer = builderData.BuildEqualityComparer();
-    var comparer = builderData.BuildComparer();
+    var equalityComparer = builderData.CreateEqualityComparer();
+    var comparer = builderData.CreateComparer();
 
     var data1 = new Data(2, DateTime.Now, new SubData("a"));
     var data2 = new Data(4, DateTime.Now, new SubData("A"));
