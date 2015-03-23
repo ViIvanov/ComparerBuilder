@@ -23,7 +23,7 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(expression));
       }//if
 
-      if(expression.IsTypeReference()) {
+      if(expression.IsTypeByReference()) {
         return ReferenceEqual(expression, Null);
       } else {
         return Equal(expression, Null);
@@ -35,7 +35,7 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(expression));
       }//if
 
-      if(expression.IsTypeReference()) {
+      if(expression.IsTypeByReference()) {
         return ReferenceNotEqual(expression, Null);
       } else {
         return NotEqual(expression, Null);
@@ -47,19 +47,19 @@ namespace GBricks.Collections
         throw new ArgumentNullException(nameof(expression));
       }//if
 
-      if(expression.IsTypeReference()) {
+      if(expression.IsTypeByReference()) {
         return expression;
       } else {
         return Convert(expression, typeof(object));
       }//if
     }
 
-    public static bool IsTypeReference(this Expression expression) {
+    public static bool IsTypeByReference(this Expression expression) {
       if(expression == null) {
         throw new ArgumentNullException(nameof(expression));
       }//if
 
-      return IsTypeReference(expression.Type);
+      return IsTypeByReference(expression.Type);
     }
 
     public static bool IsTypeNullable(this Expression expression) {
@@ -68,10 +68,10 @@ namespace GBricks.Collections
       }//if
 
       var type = expression.Type;
-      return type.IsTypeReference() || type.IsValueType && Nullable.GetUnderlyingType(type) != null;
+      return type.IsTypeByReference() || type.IsValueType && Nullable.GetUnderlyingType(type) != null;
     }
 
-    private static bool IsTypeReference(this Type type) {
+    private static bool IsTypeByReference(this Type type) {
       if(type == null) {
         throw new ArgumentNullException(nameof(type));
       }//if
